@@ -10,7 +10,6 @@ import { GlassButton } from "@/components/glass/GlassButton";
 import { joinSession } from "@/lib/mockDb";
 
 const NAME_KEY = "quizamo:display-name";
-const SESSION_KEY = "quizamo:session";
 
 export default function JoinPage() {
   const { code } = useParams<{ code: string }>();
@@ -38,10 +37,9 @@ export default function JoinPage() {
     setBusy(true);
     setError(null);
     try {
-      const sessionId = await joinSession(room, value);
+      await joinSession(room, value);
       try {
         localStorage.setItem(NAME_KEY, value);
-        localStorage.setItem(SESSION_KEY, `${room}:${sessionId}`);
       } catch {}
       router.push(`/play/${room}`);
     } catch (err) {

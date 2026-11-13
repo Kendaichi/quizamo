@@ -476,16 +476,30 @@ export async function listParticipantsOverview(): Promise<ParticipantOverviewRow
 }
 
 // Quizzer play flow -----------------------------------------------------------
-// The join/play screens talk to Supabase directly. join_session() resolves the
-// caller via my_quizzer_id(), so we sign in anonymously and self-provision a
-// quizzers row (quizzer_self_insert policy) before joining.
+// Ported from web-quizmosa's quizzers store. join_session() resolves the caller
+// via my_quizzer_id(), so we sign in anonymously and self-provision a quizzers
+// row (quizzer_self_insert policy) before joining. Standard/posttest quizzes are
+// host-paced (reveal on the host's cue); a pretest is self-paced — each quizzer
+// gets their own question + timer from get_my_progress and taps Next themselves.
 
-export type PlayState = {
+export type PlaySession = {
+  id: number;
   status: SessionStatus;
   currentQuestionId: number | null;
   questionStartedAt: string | null;
   questionEndsAt: string | null;
-  isKicked: boolean;
+};
+
+export type PlayParticipant = { id: number; displayName: string; isKicked: boolean };
+
+export type PlayProgress = {
+  kind: Kind;
+  questionId: number | null;
+  questionStartedAt: string | null;
+  questionEndsAt: string | null;
+  served: number;
+  total: number;
+  finishedAt: string | null;
 };
 
 export type PlayQuestion = {
@@ -528,32 +542,67 @@ export async function joinSession(code: string, displayName: string): Promise<nu
   return data as number;
 }
 
-export async function getPlayState(sessionId: number): Promise<PlayState> {
-  const [s, p] = await Promise.all([
-    supabase
-      .from("sessions")
-      .select("status, current_question_id, question_started_at, question_ends_at")
-      .eq("id", sessionId)
-      .single(),
-    supabase.from("participants").select("is_kicked").eq("session_id", sessionId).maybeSingle(),
-  ]);
-  if (s.error) throw s.error;
+// Read by join code; RLS only returns it to a participant of that session.
+export async function getPlaySession(code: string): Promise<PlaySession | null> {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("id, status, current_question_id, question_started_at, question_ends_at")
+    .eq("join_code", code)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
   return {
-    status: s.data.status,
-    currentQuestionId: s.data.current_question_id,
-    questionStartedAt: s.data.question_started_at,
-    questionEndsAt: s.data.question_ends_at,
-    isKicked: p.data?.is_kicked ?? false,
+    id: data.id,
+    status: data.status,
+    currentQuestionId: data.current_question_id,
+    questionStartedAt: data.question_started_at,
+    questionEndsAt: data.question_ends_at,
   };
 }
 
-export async function getPlayQuestion(questionId: number): Promise<PlayQuestion> {
+export async function getPlayParticipant(sessionId: number): Promise<PlayParticipant | null> {
+  const { data, error } = await supabase
+    .from("participants")
+    .select("id, display_name, is_kicked")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { id: data.id, displayName: data.display_name, isKicked: data.is_kicked };
+}
+
+export async function getMyProgress(sessionId: number): Promise<PlayProgress | null> {
+  const { data, error } = await supabase.rpc("get_my_progress", { p_session_id: sessionId });
+  if (error) throw error;
+  if (!data) return null;
+  const r = data as {
+    kind: Kind;
+    question_id: number | null;
+    question_started_at: string | null;
+    question_ends_at: string | null;
+    served: number;
+    total: number;
+    finished_at: string | null;
+  };
+  return {
+    kind: r.kind,
+    questionId: r.question_id,
+    questionStartedAt: r.question_started_at,
+    questionEndsAt: r.question_ends_at,
+    served: r.served,
+    total: r.total,
+    finishedAt: r.finished_at,
+  };
+}
+
+export async function getPlayQuestion(questionId: number): Promise<PlayQuestion | null> {
   const { data, error } = await supabase
     .from("questions")
     .select("id, prompt, choice_a, choice_b, choice_c, choice_d")
     .eq("id", questionId)
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) return null;
   return {
     id: data.id,
     prompt: data.prompt,
@@ -573,16 +622,24 @@ export async function getMyAnswer(
   return (data as ChoiceKey | null) ?? null;
 }
 
+// Returns false when the quizzer had already answered this question.
 export async function submitAnswer(
   sessionId: number,
   questionId: number,
   choice: ChoiceKey,
-): Promise<void> {
-  const { error } = await supabase.rpc("submit_answer", {
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("submit_answer", {
     p_session_id: sessionId,
     p_question_id: questionId,
     p_choice: choice,
   });
+  if (error) throw error;
+  return data as boolean;
+}
+
+// Pre-test only: serve this quizzer their next question and start their timer.
+export async function nextQuestion(sessionId: number): Promise<void> {
+  const { error } = await supabase.rpc("next_question", { p_session_id: sessionId });
   if (error) throw error;
 }
 
@@ -620,11 +677,4 @@ export async function getPlayLeaderboard(sessionId: number): Promise<PlayLeaderR
     rank: Number(r.rank),
     correctCount: Number(r.correct_count),
   }));
-}
-
-// Total questions in the quiz, via the quizzer-readable progress RPC.
-export async function getQuestionTotal(sessionId: number): Promise<number> {
-  const { data, error } = await supabase.rpc("get_my_progress", { p_session_id: sessionId });
-  if (error) throw error;
-  return (data as { total?: number } | null)?.total ?? 0;
 }
