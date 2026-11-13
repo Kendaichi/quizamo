@@ -178,6 +178,15 @@ body::before {
   outline: none;
 }
 
+/* Native <select> popups don't inherit the glass theme — the OS paints them
+   white. Style the options so the dropdown matches dark/light (the control's
+   color-scheme already cascades from <html>). */
+select option,
+select optgroup {
+  background-color: var(--surface);
+  color: var(--foreground);
+}
+
 /* Visible keyboard focus everywhere (a11y). */
 :where(a, button, input, [tabindex]):focus-visible {
   outline: 2px solid var(--primary);
