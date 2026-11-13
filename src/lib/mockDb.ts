@@ -479,6 +479,33 @@ export function getSessionReport(sessionId: number): Promise<SessionReport> {
   return delay(buildReport(store, s));
 }
 
+// Per-choice answer counts for the big screen. Deterministic: the correct
+// choice gets accuracyFracFor's share, the rest is spread over the others.
+export function getAnswerDistribution(
+  sessionId: number,
+  questionId: number,
+): Promise<Record<ChoiceKey, number>> {
+  const store = read();
+  const dist: Record<ChoiceKey, number> = { A: 0, B: 0, C: 0, D: 0 };
+  const s = store.sessions.find((x) => x.id === sessionId);
+  const q = store.questions.find((x) => x.id === questionId);
+  if (!s || !q) return delay(dist);
+
+  const answered = s.answered[questionId] ?? 0;
+  const keys = (["A", "B", "C", "D"] as ChoiceKey[]).filter((k) => q.choices[k]);
+  const correctCount = Math.round(answered * accuracyFracFor(questionId));
+  dist[q.correct] = Math.min(correctCount, answered);
+
+  const wrong = keys.filter((k) => k !== q.correct);
+  let remaining = answered - dist[q.correct];
+  wrong.forEach((k, i) => {
+    const share = Math.floor(remaining / (wrong.length - i));
+    dist[k] = share;
+    remaining -= share;
+  });
+  return delay(dist);
+}
+
 export type ParticipantOverviewRow = {
   participantId: number;
   displayName: string;

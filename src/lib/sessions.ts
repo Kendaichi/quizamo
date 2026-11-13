@@ -19,8 +19,12 @@ export function useSessionsQuery() {
   return useQuery({ queryKey: sessionKeys.all, queryFn: () => db.listSessions() });
 }
 
-export function useSessionQuery(id: number) {
-  return useQuery({ queryKey: sessionKeys.detail(id), queryFn: () => db.getSession(id) });
+export function useSessionQuery(id: number, options?: { refetchInterval?: number }) {
+  return useQuery({
+    queryKey: sessionKeys.detail(id),
+    queryFn: () => db.getSession(id),
+    refetchInterval: options?.refetchInterval,
+  });
 }
 
 export function useParticipantsQuery(sessionId: number) {

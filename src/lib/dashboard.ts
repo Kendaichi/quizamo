@@ -12,10 +12,24 @@ export function useHistoryQuery() {
   return useQuery({ queryKey: ["history"], queryFn: () => db.listHistory() });
 }
 
-export function useSessionReportQuery(sessionId: number) {
+export function useSessionReportQuery(sessionId: number, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: [...sessionKeys.detail(sessionId), "report"],
     queryFn: () => db.getSessionReport(sessionId),
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
+export function useAnswerDistributionQuery(
+  sessionId: number,
+  questionId: number | null,
+  options?: { refetchInterval?: number },
+) {
+  return useQuery({
+    queryKey: [...sessionKeys.detail(sessionId), "dist", questionId],
+    queryFn: () => db.getAnswerDistribution(sessionId, questionId as number),
+    enabled: questionId !== null,
+    refetchInterval: options?.refetchInterval,
   });
 }
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Check, Copy, Flag, Undo2, Play, UserX } from "lucide-react";
+import { ArrowLeft, Check, Copy, Flag, Monitor, Undo2, Play, UserX } from "lucide-react";
 import { GlassCard } from "@/components/glass/GlassCard";
 import { GlassButton } from "@/components/glass/GlassButton";
 import { KindChip } from "@/components/common/KindChip";
@@ -100,6 +100,12 @@ export default function HostControlPage() {
 
               {isLive && (
                 <div className="flex flex-wrap gap-2">
+                  <Link href={`/live/${id}`} target="_blank">
+                    <GlassButton variant="glass" size="sm">
+                      <Monitor className="size-4" />
+                      Big screen
+                    </GlassButton>
+                  </Link>
                   {isInQuestion && (
                     <GlassButton
                       variant="ghost"
