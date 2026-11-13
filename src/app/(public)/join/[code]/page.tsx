@@ -7,8 +7,10 @@ import { ArrowRight } from "lucide-react";
 import { GlassCard } from "@/components/glass/GlassCard";
 import { GlassInput } from "@/components/glass/GlassInput";
 import { GlassButton } from "@/components/glass/GlassButton";
+import { joinSession } from "@/lib/mockDb";
 
 const NAME_KEY = "quizamo:display-name";
+const SESSION_KEY = "quizamo:session";
 
 export default function JoinPage() {
   const { code } = useParams<{ code: string }>();
@@ -17,6 +19,7 @@ export default function JoinPage() {
 
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   // Remember the name between quizzes, like the reference's useJoinView.
   useEffect(() => {
@@ -26,15 +29,25 @@ export default function JoinPage() {
     } catch {}
   }, []);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const value = name.trim();
     if (!value) return setError("Display name is required");
     if (value.length > 40) return setError("Keep it under 40 characters");
+
+    setBusy(true);
+    setError(null);
     try {
-      localStorage.setItem(NAME_KEY, value);
-    } catch {}
-    router.push(`/play/${room}`);
+      const sessionId = await joinSession(room, value);
+      try {
+        localStorage.setItem(NAME_KEY, value);
+        localStorage.setItem(SESSION_KEY, `${room}:${sessionId}`);
+      } catch {}
+      router.push(`/play/${room}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not join this quiz");
+      setBusy(false);
+    }
   };
 
   return (
@@ -61,7 +74,7 @@ export default function JoinPage() {
               if (error) setError(null);
             }}
           />
-          <GlassButton type="submit" size="lg" block>
+          <GlassButton type="submit" size="lg" block loading={busy}>
             Join
             <ArrowRight className="size-5" />
           </GlassButton>

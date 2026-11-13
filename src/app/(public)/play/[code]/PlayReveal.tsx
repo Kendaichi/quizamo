@@ -33,7 +33,7 @@ export function PlayReveal({ question, myChoice, points, pointsSoFar }: Props) {
         {choiceList(question).map(({ key, text }) => {
           const isCorrect = key === question.correct;
           const isMine = key === myChoice;
-          const count = question.votes[key] + (isMine ? 1 : 0);
+          const count = question.votes[key];
           return (
             <li
               key={key}

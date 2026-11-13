@@ -474,3 +474,157 @@ export async function listParticipantsOverview(): Promise<ParticipantOverviewRow
     sessionId: r.session_id,
   }));
 }
+
+// Quizzer play flow -----------------------------------------------------------
+// The join/play screens talk to Supabase directly. join_session() resolves the
+// caller via my_quizzer_id(), so we sign in anonymously and self-provision a
+// quizzers row (quizzer_self_insert policy) before joining.
+
+export type PlayState = {
+  status: SessionStatus;
+  currentQuestionId: number | null;
+  questionStartedAt: string | null;
+  questionEndsAt: string | null;
+  isKicked: boolean;
+};
+
+export type PlayQuestion = {
+  id: number;
+  prompt: string;
+  choices: Record<ChoiceKey, string>;
+};
+
+export type Reveal = {
+  correct: ChoiceKey | null;
+  myChoice: ChoiceKey | null;
+  points: number | null;
+  pointsSoFar: number;
+  counts: Record<ChoiceKey, number>;
+};
+
+export type PlayLeaderRow = LeaderboardEntry & { correctCount: number };
+
+export async function joinSession(code: string, displayName: string): Promise<number> {
+  const { data: current } = await supabase.auth.getSession();
+  let session = current.session;
+  if (!session) {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) throw error;
+    session = data.session;
+  }
+  // Create the quizzer profile once; join_session() needs my_quizzer_id().
+  const { data: quizzerId } = await supabase.rpc("my_quizzer_id");
+  if (!quizzerId && session) {
+    const { error } = await supabase
+      .from("quizzers")
+      .insert({ user_id: session.user.id, full_name: displayName });
+    if (error && error.code !== "23505") throw error; // ignore a concurrent insert
+  }
+  const { data, error } = await supabase.rpc("join_session", {
+    p_code: code,
+    p_display_name: displayName,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+export async function getPlayState(sessionId: number): Promise<PlayState> {
+  const [s, p] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("status, current_question_id, question_started_at, question_ends_at")
+      .eq("id", sessionId)
+      .single(),
+    supabase.from("participants").select("is_kicked").eq("session_id", sessionId).maybeSingle(),
+  ]);
+  if (s.error) throw s.error;
+  return {
+    status: s.data.status,
+    currentQuestionId: s.data.current_question_id,
+    questionStartedAt: s.data.question_started_at,
+    questionEndsAt: s.data.question_ends_at,
+    isKicked: p.data?.is_kicked ?? false,
+  };
+}
+
+export async function getPlayQuestion(questionId: number): Promise<PlayQuestion> {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("id, prompt, choice_a, choice_b, choice_c, choice_d")
+    .eq("id", questionId)
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    prompt: data.prompt,
+    choices: { A: data.choice_a, B: data.choice_b, C: data.choice_c ?? "", D: data.choice_d ?? "" },
+  };
+}
+
+export async function getMyAnswer(
+  sessionId: number,
+  questionId: number,
+): Promise<ChoiceKey | null> {
+  const { data, error } = await supabase.rpc("get_my_answer", {
+    p_session_id: sessionId,
+    p_question_id: questionId,
+  });
+  if (error) throw error;
+  return (data as ChoiceKey | null) ?? null;
+}
+
+export async function submitAnswer(
+  sessionId: number,
+  questionId: number,
+  choice: ChoiceKey,
+): Promise<void> {
+  const { error } = await supabase.rpc("submit_answer", {
+    p_session_id: sessionId,
+    p_question_id: questionId,
+    p_choice: choice,
+  });
+  if (error) throw error;
+}
+
+export async function getReveal(sessionId: number, questionId: number): Promise<Reveal | null> {
+  const { data, error } = await supabase.rpc("get_reveal", {
+    p_session_id: sessionId,
+    p_question_id: questionId,
+  });
+  if (error) throw error;
+  if (!data) return null;
+  const r = data as {
+    correct_choice?: string | null;
+    my_answer?: { selected_choice: string; points_awarded: number } | null;
+    counts?: Record<string, number>;
+    points_so_far?: number;
+  };
+  const counts: Record<ChoiceKey, number> = { A: 0, B: 0, C: 0, D: 0 };
+  for (const k of ["A", "B", "C", "D"] as ChoiceKey[]) counts[k] = r.counts?.[k] ?? 0;
+  return {
+    correct: (r.correct_choice as ChoiceKey) ?? null,
+    myChoice: (r.my_answer?.selected_choice as ChoiceKey) ?? null,
+    points: r.my_answer?.points_awarded ?? null,
+    pointsSoFar: r.points_so_far ?? 0,
+    counts,
+  };
+}
+
+export async function getPlayLeaderboard(sessionId: number): Promise<PlayLeaderRow[]> {
+  const { data, error } = await supabase.rpc("get_leaderboard", { p_session_id: sessionId });
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    participantId: r.participant_id,
+    name: r.display_name,
+    score: Number(r.score),
+    rank: Number(r.rank),
+    correctCount: Number(r.correct_count),
+  }));
+}
+
+// Total questions in the quiz, via the quizzer-readable progress RPC.
+export async function getQuestionTotal(sessionId: number): Promise<number> {
+  const { data, error } = await supabase.rpc("get_my_progress", { p_session_id: sessionId });
+  if (error) throw error;
+  return (data as { total?: number } | null)?.total ?? 0;
+}
