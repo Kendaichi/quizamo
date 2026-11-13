@@ -1,0 +1,20 @@
+"use client";
+
+// React-query hooks for dashboard history + per-session results, over the mock
+// store. Port of web-quizmosa/src/stores/dashboard.ts (get_history,
+// get_session_report, get_leaderboard). Swap mockDb bodies for Supabase RPCs.
+
+import { useQuery } from "@tanstack/react-query";
+import * as db from "./mockDb";
+import { sessionKeys } from "./sessions";
+
+export function useHistoryQuery() {
+  return useQuery({ queryKey: ["history"], queryFn: () => db.listHistory() });
+}
+
+export function useSessionReportQuery(sessionId: number) {
+  return useQuery({
+    queryKey: [...sessionKeys.detail(sessionId), "report"],
+    queryFn: () => db.getSessionReport(sessionId),
+  });
+}

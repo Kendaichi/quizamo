@@ -152,11 +152,14 @@ export default function HostControlPage() {
                 )}
 
                 {session.status === "finished" && (
-                  <GlassCard>
+                  <GlassCard className="flex flex-col items-start gap-3">
                     <span className="text-sm font-semibold uppercase tracking-widest text-muted">
                       Finished
                     </span>
-                    <p className="mt-2 text-lg">This host has ended.</p>
+                    <p className="text-lg">This host has ended.</p>
+                    <Link href={`/dashboard/hosts/${id}`}>
+                      <GlassButton size="sm">View results</GlassButton>
+                    </Link>
                   </GlassCard>
                 )}
 

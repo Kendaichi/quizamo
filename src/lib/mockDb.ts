@@ -61,6 +61,7 @@ export type Session = {
   questionStartedAt: string | null;
   questionEndsAt: string | null;
   createdAt: string;
+  finishedAt: string | null;
   // Mock: final "answered" count per question id, fixed when the question starts.
   answered: Record<number, number>;
 };
@@ -303,6 +304,7 @@ export function createSession(questionnaireId: number): Promise<number> {
     questionStartedAt: null,
     questionEndsAt: null,
     createdAt: new Date().toISOString(),
+    finishedAt: null,
     answered: {},
   });
   // Seed a few bots so the lobby and participant list aren't empty.
@@ -378,6 +380,7 @@ export function revealQuestion(sessionId: number): Promise<void> {
 export function finishSession(sessionId: number): Promise<void> {
   return mutateSession(sessionId, (s) => {
     s.status = "finished";
+    s.finishedAt = new Date().toISOString();
   });
 }
 
@@ -396,4 +399,104 @@ export function kickParticipant(participantId: number): Promise<void> {
   if (p) p.isKicked = true;
   write(store);
   return delay(undefined);
+}
+
+// Results / history ---------------------------------------------------------
+// shortcut: no real answers, so scores and per-question accuracy are derived
+// deterministically from ids (stable across reloads). Swap for get_leaderboard
+// / get_session_report / get_history when Supabase lands.
+
+export type LeaderboardEntry = { participantId: number; name: string; score: number; rank: number };
+export type ReportQuestion = {
+  questionId: number;
+  position: number;
+  prompt: string;
+  answered: number;
+  correct: number;
+  accuracy: number | null;
+};
+export type SessionReport = {
+  leaderboard: LeaderboardEntry[];
+  questions: ReportQuestion[];
+  participantCount: number;
+  averageScore: number;
+  averageAccuracy: number | null;
+};
+export type HistoryRow = {
+  sessionId: number;
+  joinCode: string;
+  questionnaireName: string;
+  kind: Kind;
+  endedAt: string;
+  participantCount: number;
+  averageScore: number;
+  averageAccuracy: number | null;
+};
+
+const scoreFor = (participantId: number) => 500 + ((participantId * 977) % 36) * 100; // 500–4000
+const accuracyFracFor = (questionId: number) => 0.35 + ((questionId * 7) % 56) / 100; // 0.35–0.90
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+
+function buildReport(store: Store, s: Session): SessionReport {
+  const active = store.participants.filter((p) => p.sessionId === s.id && !p.isKicked);
+  const leaderboard: LeaderboardEntry[] = active
+    .map((p) => ({ participantId: p.id, name: p.displayName, score: scoreFor(p.id) }))
+    .sort((a, b) => b.score - a.score)
+    .map((e, i) => ({ ...e, rank: i + 1 }));
+
+  const questions: ReportQuestion[] = store.questions
+    .filter((q) => q.questionnaireId === s.questionnaireId)
+    .sort((a, b) => a.position - b.position)
+    .map((q, i) => {
+      const answered = s.answered[q.id] ?? 0;
+      const correct = answered > 0 ? Math.round(answered * accuracyFracFor(q.id)) : 0;
+      return {
+        questionId: q.id,
+        position: i + 1,
+        prompt: q.prompt,
+        answered,
+        correct,
+        accuracy: answered > 0 ? correct / answered : null,
+      };
+    });
+
+  const answeredQuestions = questions.filter((q) => q.accuracy !== null);
+  return {
+    leaderboard,
+    questions,
+    participantCount: active.length,
+    averageScore: Math.round(mean(leaderboard.map((e) => e.score))),
+    averageAccuracy: answeredQuestions.length
+      ? mean(answeredQuestions.map((q) => q.accuracy as number))
+      : null,
+  };
+}
+
+export function getSessionReport(sessionId: number): Promise<SessionReport> {
+  const store = read();
+  const s = store.sessions.find((x) => x.id === sessionId);
+  if (!s) return Promise.reject(new Error("Host not found"));
+  return delay(buildReport(store, s));
+}
+
+export function listHistory(): Promise<HistoryRow[]> {
+  const store = read();
+  const rows = store.sessions
+    .filter((s) => s.status === "finished")
+    .map((s): HistoryRow => {
+      const qn = store.questionnaires.find((q) => q.id === s.questionnaireId);
+      const report = buildReport(store, s);
+      return {
+        sessionId: s.id,
+        joinCode: s.joinCode,
+        questionnaireName: qn?.name ?? "—",
+        kind: qn?.kind ?? "standard",
+        endedAt: s.finishedAt ?? s.createdAt,
+        participantCount: report.participantCount,
+        averageScore: report.averageScore,
+        averageAccuracy: report.averageAccuracy,
+      };
+    })
+    .sort((a, b) => b.endedAt.localeCompare(a.endedAt));
+  return delay(rows);
 }

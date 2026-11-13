@@ -43,3 +43,7 @@ export const POINTS_DEFAULT = 1000;
 export function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
 }
+
+export function formatPercent(value: number | null | undefined) {
+  return value == null ? "–" : `${Math.round(value * 100)}%`;
+}
