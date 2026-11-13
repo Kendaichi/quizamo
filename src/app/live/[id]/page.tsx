@@ -10,6 +10,7 @@ import { StatusChip } from "@/components/common/StatusChip";
 import { QrCode } from "@/components/common/QrCode";
 import { LeaderboardList } from "@/components/dashboard/LeaderboardList";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { cn } from "@/lib/cn";
 import { CHOICE_KEYS } from "@/lib/constants";
 import { useQuestionsQuery } from "@/lib/questionnaires";
 import { useCountdown, useParticipantsQuery, useSessionQuery } from "@/lib/sessions";
@@ -294,43 +295,49 @@ function RevealView({
 
 function Podium({ rows }: { rows: LeaderboardEntry[] }) {
   if (rows.length === 0) {
-    return <div className="text-center text-2xl font-bold text-muted">Nobody on the board yet</div>;
+    return <div className="text-center text-3xl font-bold text-muted">Nobody on the board yet</div>;
   }
 
-  // Heights keyed by place (0 = 1st = tallest); columns ordered 2nd · 1st · 3rd
-  // so the winner stands in the middle.
-  const heights = ["80%", "58%", "44%"];
-  const podium = [1, 0, 2].flatMap((place) =>
-    rows[place] ? [{ row: rows[place], height: heights[place] }] : [],
+  // Columns render 2nd · 1st · 3rd so the winner stands tallest in the middle.
+  const heights = ["54%", "78%", "40%"];
+  const podium = [1, 0, 2].flatMap((place, i) =>
+    rows[place] ? [{ row: rows[place], height: heights[i] }] : [],
   );
   const others = rows.slice(3);
 
   return (
-    <div className="grid gap-10 lg:grid-cols-[3fr_2fr]">
-      <div>
-        <p className="mb-4 text-center text-xl font-bold text-primary">🏆 Final results</p>
-        <div className="flex h-[52vh] items-end justify-center gap-5">
-          {podium.map(({ row, height }) => (
+    <div className={cn("grid gap-12", others.length > 0 && "lg:grid-cols-[3fr_2fr]")}>
+      <div className="flex min-h-[60vh] items-end justify-center gap-6 sm:gap-10">
+        {podium.map(({ row, height }) => {
+          const winner = row.rank === 1;
+          return (
             <div
               key={row.participantId}
-              className="flex h-full min-w-0 max-w-[260px] flex-1 flex-col justify-end"
+              className="flex h-full min-w-0 max-w-[300px] flex-1 flex-col justify-end"
             >
-              <div className="truncate text-center text-xl font-extrabold sm:text-3xl">{row.name}</div>
-              <div className="mb-3 text-center text-lg text-muted sm:text-2xl">
+              <div className="truncate text-center font-extrabold text-[clamp(1.5rem,2.8vw,3rem)]">
+                {row.name}
+              </div>
+              <div className="mb-3 text-center text-muted text-[clamp(1.1rem,1.8vw,1.9rem)]">
                 {row.score.toLocaleString()}
               </div>
               <div
-                className="flex items-start justify-center rounded-t-3xl bg-primary pt-4 text-3xl font-extrabold text-on-primary sm:text-5xl"
+                className={cn(
+                  "flex items-start justify-center rounded-t-3xl pt-5 font-extrabold text-on-primary text-[clamp(2rem,4vw,4rem)]",
+                  winner ? "bg-primary shadow-[0_-12px_40px_-8px_var(--primary)]" : "bg-primary/70",
+                )}
                 style={{ height }}
               >
                 #{row.rank}
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      {others.length > 0 && <LeaderboardList rows={others} limit={7} className="self-center" />}
+      {others.length > 0 && (
+        <LeaderboardList rows={others} limit={7} large className="self-center" />
+      )}
     </div>
   );
 }
