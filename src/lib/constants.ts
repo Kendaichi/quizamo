@@ -1,4 +1,4 @@
-import type { Kind, ChoiceKey } from "./mockDb";
+import type { Kind, ChoiceKey, SessionStatus } from "./mockDb";
 
 export const kindLabels: Record<Kind, string> = {
   standard: "Standard",
@@ -17,6 +17,20 @@ export const kindOptions = (Object.keys(kindLabels) as Kind[]).map((value) => ({
   value,
   label: kindLabels[value],
 }));
+
+export const statusLabels: Record<SessionStatus, string> = {
+  lobby: "Lobby",
+  question: "Live",
+  reveal: "Reveal",
+  finished: "Finished",
+};
+
+export const statusChipClass: Record<SessionStatus, string> = {
+  lobby: "bg-info/12 text-info",
+  question: "bg-primary/12 text-primary",
+  reveal: "bg-warning/18 text-warning",
+  finished: "bg-foreground/8 text-muted",
+};
 
 export const CHOICE_KEYS: ChoiceKey[] = ["A", "B", "C", "D"];
 

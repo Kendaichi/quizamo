@@ -15,8 +15,8 @@ type NavItem = { href: string; label: string; icon: LucideIcon; soon?: boolean }
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/questionnaires", label: "Questionnaires", icon: ListChecks },
-  // Later slices — shown but not built yet.
-  { href: "/hosts", label: "Hosts", icon: Radio, soon: true },
+  { href: "/hosts", label: "Hosts", icon: Radio },
+  // Later slice — shown but not built yet.
   { href: "/participants", label: "Participants", icon: Users, soon: true },
 ];
 

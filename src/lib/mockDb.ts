@@ -50,10 +50,40 @@ export type QuestionInput = {
   secondsOverride: number | null;
 };
 
+export type SessionStatus = "lobby" | "question" | "reveal" | "finished";
+
+export type Session = {
+  id: number;
+  joinCode: string;
+  questionnaireId: number;
+  status: SessionStatus;
+  currentQuestionId: number | null;
+  questionStartedAt: string | null;
+  questionEndsAt: string | null;
+  createdAt: string;
+  // Mock: final "answered" count per question id, fixed when the question starts.
+  answered: Record<number, number>;
+};
+
+export type Participant = {
+  id: number;
+  sessionId: number;
+  displayName: string;
+  joinedAt: string;
+  isKicked: boolean;
+};
+
+export type SessionWithMeta = Session & {
+  questionnaire: { name: string; kind: Kind } | null;
+  participantCount: number;
+};
+
 type Store = {
   nextId: number;
   questionnaires: Questionnaire[];
   questions: Question[];
+  sessions: Session[];
+  participants: Participant[];
 };
 
 const STORAGE_KEY = "quizamo-mockdb";
@@ -90,14 +120,23 @@ const seed = (): Store => {
       { id: 2, name: "Onboarding Pre-test", kind: "pretest", secondsPerQuestion: 20, createdAt: iso(0) },
     ],
     questions,
+    sessions: [],
+    participants: [],
   };
 };
 
 function read(): Store {
-  if (typeof window === "undefined") return { nextId: 1, questionnaires: [], questions: [] };
+  if (typeof window === "undefined")
+    return { nextId: 1, questionnaires: [], questions: [], sessions: [], participants: [] };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Store;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Store;
+      // Carry stores seeded before the sessions slice existed.
+      parsed.sessions ??= [];
+      parsed.participants ??= [];
+      return parsed;
+    }
   } catch {}
   const fresh = seed();
   write(fresh);
@@ -219,6 +258,142 @@ export function reorderQuestions(ids: number[]): Promise<void> {
     const next = order.get(q.id);
     if (next !== undefined) q.position = next;
   }
+  write(store);
+  return delay(undefined);
+}
+
+// Sessions (hosts) ---------------------------------------------------------
+// shortcut: no real quizzers. Participants are seeded bots and "answered"
+// counts are random targets, so the host control flow is demoable without
+// realtime. Swap for Supabase create_session / start_question / realtime.
+
+const BOT_NAMES = ["Mara", "Dex", "Lin", "Ava", "Theo", "Noa", "Kai", "Rue", "Sol", "Pia"];
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O/1/I/L
+
+function genJoinCode(): string {
+  let code = "";
+  for (let i = 0; i < 6; i++)
+    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return code;
+}
+
+const sessionMeta = (store: Store, s: Session): SessionWithMeta => {
+  const qn = store.questionnaires.find((q) => q.id === s.questionnaireId) ?? null;
+  return {
+    ...s,
+    questionnaire: qn ? { name: qn.name, kind: qn.kind } : null,
+    participantCount: store.participants.filter((p) => p.sessionId === s.id && !p.isKicked).length,
+  };
+};
+
+export function createSession(questionnaireId: number): Promise<number> {
+  const store = read();
+  const qn = store.questionnaires.find((q) => q.id === questionnaireId);
+  if (!qn) return Promise.reject(new Error("Questionnaire not found"));
+  if (store.questions.filter((q) => q.questionnaireId === questionnaireId).length === 0)
+    return Promise.reject(new Error("Add questions before hosting this questionnaire"));
+
+  const id = store.nextId++;
+  store.sessions.push({
+    id,
+    joinCode: genJoinCode(),
+    questionnaireId,
+    status: "lobby",
+    currentQuestionId: null,
+    questionStartedAt: null,
+    questionEndsAt: null,
+    createdAt: new Date().toISOString(),
+    answered: {},
+  });
+  // Seed a few bots so the lobby and participant list aren't empty.
+  const count = 3 + Math.floor(Math.random() * 3);
+  const names = [...BOT_NAMES].sort(() => Math.random() - 0.5).slice(0, count);
+  names.forEach((name, i) => {
+    store.participants.push({
+      id: store.nextId++,
+      sessionId: id,
+      displayName: `${name} ${String.fromCharCode(65 + i)}.`,
+      joinedAt: new Date(Date.now() + i).toISOString(),
+      isKicked: false,
+    });
+  });
+  write(store);
+  return delay(id);
+}
+
+export function listSessions(): Promise<SessionWithMeta[]> {
+  const store = read();
+  const rows = [...store.sessions]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((s) => sessionMeta(store, s));
+  return delay(rows);
+}
+
+export function getSession(id: number): Promise<SessionWithMeta> {
+  const store = read();
+  const found = store.sessions.find((s) => s.id === id);
+  if (!found) return Promise.reject(new Error("Host not found"));
+  return delay(sessionMeta(store, found));
+}
+
+export function listParticipants(sessionId: number): Promise<Participant[]> {
+  const store = read();
+  const rows = store.participants
+    .filter((p) => p.sessionId === sessionId)
+    .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
+  return delay(rows);
+}
+
+function mutateSession(id: number, fn: (s: Session, store: Store) => void): Promise<void> {
+  const store = read();
+  const s = store.sessions.find((x) => x.id === id);
+  if (!s) return Promise.reject(new Error("Host not found"));
+  fn(s, store);
+  write(store);
+  return delay(undefined);
+}
+
+export function startQuestion(sessionId: number, questionId: number): Promise<void> {
+  return mutateSession(sessionId, (s, store) => {
+    const question = store.questions.find((q) => q.id === questionId);
+    const qn = store.questionnaires.find((q) => q.id === s.questionnaireId);
+    const seconds = question?.secondsOverride ?? qn?.secondsPerQuestion ?? 15;
+    const active = store.participants.filter((p) => p.sessionId === sessionId && !p.isKicked).length;
+    const now = Date.now();
+    s.status = "question";
+    s.currentQuestionId = questionId;
+    s.questionStartedAt = new Date(now).toISOString();
+    s.questionEndsAt = new Date(now + seconds * 1000).toISOString();
+    // Most but not all of the room answers; fixed now so reveal is stable.
+    s.answered[questionId] = Math.round(active * (0.6 + Math.random() * 0.4));
+  });
+}
+
+export function revealQuestion(sessionId: number): Promise<void> {
+  return mutateSession(sessionId, (s) => {
+    s.status = "reveal";
+  });
+}
+
+export function finishSession(sessionId: number): Promise<void> {
+  return mutateSession(sessionId, (s) => {
+    s.status = "finished";
+  });
+}
+
+export function returnToLobby(sessionId: number): Promise<void> {
+  return mutateSession(sessionId, (s) => {
+    s.status = "lobby";
+    s.currentQuestionId = null;
+    s.questionStartedAt = null;
+    s.questionEndsAt = null;
+  });
+}
+
+export function kickParticipant(participantId: number): Promise<void> {
+  const store = read();
+  const p = store.participants.find((x) => x.id === participantId);
+  if (p) p.isKicked = true;
   write(store);
   return delay(undefined);
 }
