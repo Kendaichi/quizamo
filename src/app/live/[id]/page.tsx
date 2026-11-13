@@ -7,11 +7,12 @@ import { Check, Maximize, Minimize, SlidersHorizontal, X } from "lucide-react";
 import { CountdownRing } from "@/components/common/CountdownRing";
 import { KindChip } from "@/components/common/KindChip";
 import { StatusChip } from "@/components/common/StatusChip";
+import { QrCode } from "@/components/common/QrCode";
 import { LeaderboardList } from "@/components/dashboard/LeaderboardList";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { CHOICE_KEYS } from "@/lib/constants";
 import { useQuestionsQuery } from "@/lib/questionnaires";
-import { useCountdown, useSessionQuery } from "@/lib/sessions";
+import { useCountdown, useParticipantsQuery, useSessionQuery } from "@/lib/sessions";
 import { useAnswerDistributionQuery, useSessionReportQuery } from "@/lib/dashboard";
 import type { ChoiceKey, LeaderboardEntry, Question } from "@/lib/mockDb";
 
@@ -26,11 +27,13 @@ export default function BigScreenPage() {
   const { data: session } = useSessionQuery(id, { refetchInterval: POLL });
   const { data: questions = [] } = useQuestionsQuery(session?.questionnaireId ?? 0);
   const { data: report } = useSessionReportQuery(id, { refetchInterval: POLL });
+  const { data: participants = [] } = useParticipantsQuery(id, { refetchInterval: POLL });
 
+  const status = session?.status;
+  const isPretest = session?.questionnaire?.kind === "pretest";
   const currentIndex = questions.findIndex((q) => q.id === session?.currentQuestionId);
   const currentQuestion = currentIndex >= 0 ? questions[currentIndex] : null;
-  const inQuestion = session?.status === "question" || session?.status === "reveal";
-  const reveal = session?.status === "reveal";
+  const inQuestion = status === "question" || status === "reveal";
 
   const { data: dist } = useAnswerDistributionQuery(
     id,
@@ -60,7 +63,13 @@ export default function BigScreenPage() {
     else document.documentElement.requestFullscreen().catch(() => {});
   };
 
+  const leaderboard = report?.leaderboard ?? [];
+  const active = participants.filter((p) => !p.isKicked);
+  const participantCount = active.length;
+  const doneCount = active.filter((p) => p.finishedAt).length;
   const answered = dist ? Object.values(dist).reduce((a, b) => a + b, 0) : 0;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const joinUrl = `${origin}/join/${session?.joinCode ?? ""}`;
 
   return (
     <div className="flex min-h-dvh flex-col gap-8 p-6 sm:p-10">
@@ -100,50 +109,88 @@ export default function BigScreenPage() {
       </header>
 
       <main className="flex flex-1 flex-col justify-center">
-        {inQuestion && currentQuestion ? (
-          <QuestionView
+        {status === "lobby" && (
+          <div className="flex flex-wrap items-center justify-center gap-12 sm:gap-20">
+            <div className="text-center sm:text-left">
+              <p className="text-lg font-semibold uppercase tracking-widest text-muted">
+                Join at {origin.replace(/^https?:\/\//, "")}/join
+              </p>
+              <div className="mt-2 font-mono text-7xl font-extrabold tracking-[0.1em] sm:text-9xl">
+                {session?.joinCode}
+              </div>
+              <p className="mt-4 text-2xl font-bold text-muted sm:text-3xl">
+                {participantCount} joined
+              </p>
+            </div>
+            {session?.joinCode && <QrCode value={joinUrl} size={320} />}
+          </div>
+        )}
+
+        {status === "question" && isPretest && (
+          <div className="flex flex-col gap-10">
+            <div>
+              <p className="text-lg font-semibold uppercase tracking-widest text-muted">
+                Pre-test in progress
+              </p>
+              <h2 className="mt-2 text-4xl font-extrabold sm:text-6xl">Answer on your phone</h2>
+              <p className="mt-4 text-2xl font-bold text-muted sm:text-3xl">
+                {doneCount} of {participantCount} done
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-widest text-muted">Leaderboard</p>
+              <LeaderboardList rows={leaderboard} limit={8} className="mt-3" />
+            </div>
+          </div>
+        )}
+
+        {status === "question" && !isPretest && currentQuestion && (
+          <LiveQuestion
+            question={currentQuestion}
+            index={currentIndex}
+            total={questions.length}
+            answered={answered}
+            participants={participantCount}
+            seconds={seconds}
+            percent={percent}
+          />
+        )}
+
+        {status === "reveal" && currentQuestion && (
+          <RevealView
             question={currentQuestion}
             index={currentIndex}
             total={questions.length}
             counts={dist ?? { A: 0, B: 0, C: 0, D: 0 }}
-            answered={answered}
-            participants={report?.participantCount ?? 0}
-            reveal={reveal}
-            seconds={seconds}
-            percent={percent}
+            leaderboard={leaderboard}
+            isPretest={!!isPretest}
           />
-        ) : (
-          <Podium rows={report?.leaderboard ?? []} status={session?.status} />
         )}
+
+        {status === "finished" && <Podium rows={leaderboard} />}
       </main>
     </div>
   );
 }
 
-function QuestionView({
+function LiveQuestion({
   question,
   index,
   total,
-  counts,
   answered,
   participants,
-  reveal,
   seconds,
   percent,
 }: {
   question: Question;
   index: number;
   total: number;
-  counts: Record<ChoiceKey, number>;
   answered: number;
   participants: number;
-  reveal: boolean;
   seconds: number;
   percent: number;
 }) {
   const choices = CHOICE_KEYS.filter((k) => question.choices[k]);
-  const highest = Math.max(1, ...choices.map((k) => counts[k]));
-
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-start justify-between gap-6">
@@ -153,47 +200,96 @@ function QuestionView({
           </p>
           <h2 className="mt-2 text-3xl font-extrabold sm:text-5xl">{question.prompt}</h2>
         </div>
-        {!reveal && <CountdownRing seconds={seconds} percent={percent} size={120} width={12} />}
+        <CountdownRing seconds={seconds} percent={percent} size={120} width={12} />
       </div>
 
-      <div className="flex flex-col gap-4">
-        {choices.map((key) => {
-          const n = counts[key];
-          const correct = reveal && question.correct === key;
-          return (
-            <div key={key}>
-              <div className="flex items-center gap-3 text-xl font-bold sm:text-2xl">
-                {correct && <Check className="size-6 shrink-0 text-success" />}
-                <span className="w-7">{key}</span>
-                <span className="min-w-0 flex-1 truncate font-medium">{question.choices[key]}</span>
-                <span className="tabular-nums">{n}</span>
-              </div>
-              <div className="mt-2 h-5 overflow-hidden rounded-md bg-foreground/10">
-                <div
-                  className={
-                    "h-full rounded-md transition-[width] duration-500 " +
-                    (correct ? "bg-success" : "bg-primary")
-                  }
-                  style={{ width: `${(n / highest) * 100}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {choices.map((key) => (
+          <div
+            key={key}
+            className="glass flex items-center gap-4 !rounded-2xl p-6 text-xl font-semibold sm:text-2xl"
+          >
+            <span className="font-extrabold text-primary">{key}</span>
+            <span className="min-w-0 flex-1 truncate">{question.choices[key]}</span>
+          </div>
+        ))}
       </div>
 
       <p className="text-center text-2xl font-extrabold tabular-nums sm:text-3xl">
-        {answered} / {participants} answered
+        {answered} of {participants} answered
       </p>
     </div>
   );
 }
 
-function Podium({ rows, status }: { rows: LeaderboardEntry[]; status?: string }) {
+function RevealView({
+  question,
+  index,
+  total,
+  counts,
+  leaderboard,
+  isPretest,
+}: {
+  question: Question;
+  index: number;
+  total: number;
+  counts: Record<ChoiceKey, number>;
+  leaderboard: LeaderboardEntry[];
+  isPretest: boolean;
+}) {
+  const choices = CHOICE_KEYS.filter((k) => question.choices[k]);
+  const highest = Math.max(1, ...choices.map((k) => counts[k]));
+
+  return (
+    <div className="grid gap-10 lg:grid-cols-[3fr_2fr]">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold uppercase tracking-widest text-muted">
+          Question {index + 1} of {total}
+        </p>
+        <h2 className="mt-2 text-3xl font-extrabold sm:text-5xl">{question.prompt}</h2>
+
+        {isPretest ? (
+          <p className="mt-8 text-2xl font-bold text-muted">Answers are in.</p>
+        ) : (
+          <div className="mt-8 flex flex-col gap-5">
+            {choices.map((key) => {
+              const n = counts[key];
+              const correct = question.correct === key;
+              return (
+                <div key={key}>
+                  <div className="flex items-center gap-3 text-xl font-bold sm:text-2xl">
+                    {correct && <Check className="size-6 shrink-0 text-success" />}
+                    <span className="w-7">{key}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{question.choices[key]}</span>
+                    <span className="tabular-nums">{n}</span>
+                  </div>
+                  <div className="mt-2 h-5 overflow-hidden rounded-md bg-foreground/10">
+                    <div
+                      className={
+                        "h-full rounded-md transition-[width] duration-500 " +
+                        (correct ? "bg-success" : "bg-primary")
+                      }
+                      style={{ width: `${(n / highest) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-widest text-muted">Leaderboard</p>
+        <LeaderboardList rows={leaderboard} limit={6} className="mt-3" />
+      </div>
+    </div>
+  );
+}
+
+function Podium({ rows }: { rows: LeaderboardEntry[] }) {
   if (rows.length === 0) {
-    return (
-      <div className="text-center text-2xl font-bold text-muted">Nobody on the board yet</div>
-    );
+    return <div className="text-center text-2xl font-bold text-muted">Nobody on the board yet</div>;
   }
 
   // Heights keyed by place (0 = 1st = tallest); columns ordered 2nd · 1st · 3rd
@@ -207,15 +303,14 @@ function Podium({ rows, status }: { rows: LeaderboardEntry[]; status?: string })
   return (
     <div className="grid gap-10 lg:grid-cols-[3fr_2fr]">
       <div>
-        {status === "finished" && (
-          <p className="mb-4 text-center text-xl font-bold text-primary">🏆 Final results</p>
-        )}
+        <p className="mb-4 text-center text-xl font-bold text-primary">🏆 Final results</p>
         <div className="flex h-[52vh] items-end justify-center gap-5">
           {podium.map(({ row, height }) => (
-            <div key={row.participantId} className="flex h-full min-w-0 max-w-[260px] flex-1 flex-col justify-end">
-              <div className="truncate text-center text-xl font-extrabold sm:text-3xl">
-                {row.name}
-              </div>
+            <div
+              key={row.participantId}
+              className="flex h-full min-w-0 max-w-[260px] flex-1 flex-col justify-end"
+            >
+              <div className="truncate text-center text-xl font-extrabold sm:text-3xl">{row.name}</div>
               <div className="mb-3 text-center text-lg text-muted sm:text-2xl">
                 {row.score.toLocaleString()}
               </div>

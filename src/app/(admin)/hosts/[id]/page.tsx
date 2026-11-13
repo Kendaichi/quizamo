@@ -17,6 +17,7 @@ import {
   useCountdown,
   useFinishSession,
   useKickParticipant,
+  useOpenPretest,
   useParticipantsQuery,
   useReturnToLobby,
   useRevealQuestion,
@@ -34,6 +35,7 @@ export default function HostControlPage() {
   const questionsQuery = useQuestionsQuery(session?.questionnaireId ?? 0);
 
   const startQuestion = useStartQuestion(id);
+  const openPretest = useOpenPretest(id);
   const revealQuestion = useRevealQuestion(id);
   const finishSession = useFinishSession(id);
   const returnToLobby = useReturnToLobby(id);
@@ -46,6 +48,16 @@ export default function HostControlPage() {
 
   const [kicking, setKicking] = useState<Participant | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Surface the server's message (e.g. "Pre-tests are self-paced") instead of a silent 400.
+  const run = async (action: () => Promise<unknown>) => {
+    try {
+      await action();
+    } catch (err) {
+      setNotice((err as { message?: string })?.message ?? "Something went wrong");
+    }
+  };
 
   const questions = questionsQuery.data ?? [];
   const participants = participantsQuery.data ?? [];
@@ -58,21 +70,26 @@ export default function HostControlPage() {
     ? questions[currentIndex + 1] ?? null
     : questions.find((q) => answeredCount(q.id) === 0) ?? null;
 
+  const isPretest = session?.questionnaire?.kind === "pretest";
   const isBusy =
     startQuestion.isPending ||
+    openPretest.isPending ||
     revealQuestion.isPending ||
     finishSession.isPending ||
     returnToLobby.isPending;
   const isLive = !!session && session.status !== "finished";
   const isInQuestion = session?.status === "question" || session?.status === "reveal";
 
-  const onStartNext = () => nextQuestion && startQuestion.mutate(nextQuestion.id);
+  const onStartNext = () => nextQuestion && run(() => startQuestion.mutateAsync(nextQuestion.id));
+  const onReveal = () => run(() => revealQuestion.mutateAsync());
+  const onReturnToLobby = () => run(() => returnToLobby.mutateAsync());
+  const onOpenPretest = () => run(() => openPretest.mutateAsync());
   const confirmKick = async () => {
-    if (kicking) await kick.mutateAsync(kicking.id);
+    if (kicking) await run(() => kick.mutateAsync(kicking.id));
     setKicking(null);
   };
   const confirmFinish = async () => {
-    await finishSession.mutateAsync();
+    await run(() => finishSession.mutateAsync());
     setFinishOpen(false);
   };
 
@@ -106,11 +123,11 @@ export default function HostControlPage() {
                       Big screen
                     </GlassButton>
                   </Link>
-                  {isInQuestion && (
+                  {isInQuestion && !isPretest && (
                     <GlassButton
                       variant="ghost"
                       size="sm"
-                      onClick={() => returnToLobby.mutate()}
+                      onClick={onReturnToLobby}
                       disabled={isBusy}
                     >
                       <Undo2 className="size-4" />
@@ -126,8 +143,15 @@ export default function HostControlPage() {
                     <Flag className="size-4" />
                     Finish
                   </GlassButton>
-                  {session.status === "question" ? (
-                    <GlassButton onClick={() => revealQuestion.mutate()} loading={isBusy}>
+                  {isPretest ? (
+                    session.status === "lobby" && (
+                      <GlassButton onClick={onOpenPretest} loading={isBusy}>
+                        <Play className="size-4" />
+                        Start
+                      </GlassButton>
+                    )
+                  ) : session.status === "question" ? (
+                    <GlassButton onClick={onReveal} loading={isBusy}>
                       Reveal
                     </GlassButton>
                   ) : nextQuestion ? (
@@ -155,6 +179,17 @@ export default function HostControlPage() {
                     seconds={seconds}
                     percent={percent}
                   />
+                )}
+
+                {isPretest && session.status === "question" && (
+                  <GlassCard className="flex flex-col items-start gap-2">
+                    <span className="text-sm font-semibold uppercase tracking-widest text-muted">
+                      Pre-test open
+                    </span>
+                    <p className="text-lg">
+                      Quizzers go at their own pace. Finish when everyone is done.
+                    </p>
+                  </GlassCard>
                 )}
 
                 {session.status === "finished" && (
@@ -222,6 +257,16 @@ export default function HostControlPage() {
         confirmLabel="Finish"
         text="End this host for everyone? This cannot be undone."
       />
+
+      {notice && (
+        <div
+          role="alert"
+          onClick={() => setNotice(null)}
+          className="glass fixed inset-x-4 bottom-4 mx-auto max-w-md cursor-pointer p-4 text-center text-sm font-semibold text-danger"
+        >
+          {notice}
+        </div>
+      )}
     </div>
   );
 }

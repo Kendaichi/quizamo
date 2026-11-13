@@ -71,6 +71,7 @@ export type Participant = {
   displayName: string;
   joinedAt: string;
   isKicked: boolean;
+  finishedAt: string | null;
 };
 
 export type SessionWithMeta = Session & {
@@ -332,7 +333,7 @@ export async function getSession(id: number): Promise<SessionWithMeta> {
 export async function listParticipants(sessionId: number): Promise<Participant[]> {
   const { data, error } = await supabase
     .from("participants")
-    .select("id, session_id, display_name, joined_at, is_kicked")
+    .select("id, session_id, display_name, joined_at, is_kicked, finished_at")
     .eq("session_id", sessionId)
     .order("joined_at");
   if (error) throw error;
@@ -342,16 +343,20 @@ export async function listParticipants(sessionId: number): Promise<Participant[]
     displayName: p.display_name,
     joinedAt: p.joined_at,
     isKicked: p.is_kicked,
+    finishedAt: p.finished_at,
   }));
 }
 
 async function rpcVoid(
-  fn: "reveal_question" | "finish_session" | "return_to_lobby",
+  fn: "reveal_question" | "finish_session" | "return_to_lobby" | "open_pretest",
   sessionId: number,
 ): Promise<void> {
   const { error } = await supabase.rpc(fn, { p_session_id: sessionId });
   if (error) throw error;
 }
+
+// Pre-tests aren't host-paced: the host opens them, then quizzers self-advance.
+export const openPretest = (sessionId: number) => rpcVoid("open_pretest", sessionId);
 
 export async function startQuestion(sessionId: number, questionId: number): Promise<void> {
   const { error } = await supabase.rpc("start_question", {

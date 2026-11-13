@@ -27,10 +27,11 @@ export function useSessionQuery(id: number, options?: { refetchInterval?: number
   });
 }
 
-export function useParticipantsQuery(sessionId: number) {
+export function useParticipantsQuery(sessionId: number, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: sessionKeys.participants(sessionId),
     queryFn: () => db.listParticipants(sessionId),
+    refetchInterval: options?.refetchInterval,
   });
 }
 
@@ -70,6 +71,10 @@ export function useFinishSession(sessionId: number) {
 
 export function useReturnToLobby(sessionId: number) {
   return useSessionControl<void>(sessionId, () => db.returnToLobby(sessionId));
+}
+
+export function useOpenPretest(sessionId: number) {
+  return useSessionControl<void>(sessionId, () => db.openPretest(sessionId));
 }
 
 export function useKickParticipant(sessionId: number) {

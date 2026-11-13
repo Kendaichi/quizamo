@@ -25,7 +25,10 @@ export function usePlaySessionQuery(code: string) {
   return useQuery({
     queryKey: playKeys.session(code),
     queryFn: () => db.getPlaySession(code),
-    refetchInterval: 15_000,
+    // Realtime delivers host changes instantly; this is only a fallback for a
+    // dropped channel. Kept short so a question still appears within ~2.5s even
+    // if realtime lags, instead of the player losing most of the countdown.
+    refetchInterval: 2_500,
     refetchOnWindowFocus: true,
   });
 }
