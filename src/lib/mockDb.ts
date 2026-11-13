@@ -627,6 +627,24 @@ export async function getMyAnswer(
   return (data as ChoiceKey | null) ?? null;
 }
 
+// Your own correctness + running score once you've answered (no correct choice,
+// so it never spoils the reveal). Null until you've locked in an answer.
+export type MyResult = { isCorrect: boolean; pointsAwarded: number; pointsSoFar: number };
+
+export async function getMyResult(
+  sessionId: number,
+  questionId: number,
+): Promise<MyResult | null> {
+  const { data, error } = await supabase.rpc("get_my_result", {
+    p_session_id: sessionId,
+    p_question_id: questionId,
+  });
+  if (error) throw error;
+  if (!data) return null;
+  const r = data as { is_correct: boolean; points_awarded: number; points_so_far: number };
+  return { isCorrect: r.is_correct, pointsAwarded: r.points_awarded, pointsSoFar: r.points_so_far };
+}
+
 // Returns false when the quizzer had already answered this question.
 export async function submitAnswer(
   sessionId: number,

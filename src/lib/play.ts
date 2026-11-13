@@ -17,6 +17,7 @@ export const playKeys = {
   progress: (code: string) => ["play", code, "progress"] as const,
   question: (code: string, q: number | null) => ["play", code, "question", q] as const,
   answer: (code: string, q: number | null) => ["play", code, "answer", q] as const,
+  result: (code: string, q: number | null) => ["play", code, "result", q] as const,
   reveal: (code: string, q: number | null) => ["play", code, "reveal", q] as const,
   leaderboard: (code: string) => ["play", code, "leaderboard"] as const,
 };
@@ -65,6 +66,20 @@ export function useMyAnswerQuery(code: string, sessionId: number, questionId: nu
   });
 }
 
+// Your own correctness + running score, once you've answered this question.
+export function useMyResultQuery(
+  code: string,
+  sessionId: number,
+  questionId: number | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: playKeys.result(code, questionId),
+    queryFn: () => db.getMyResult(sessionId, questionId as number),
+    enabled: enabled && sessionId > 0 && questionId !== null,
+  });
+}
+
 export function useRevealQuery(
   code: string,
   sessionId: number,
@@ -91,8 +106,10 @@ export function useSubmitAnswer(code: string) {
   return useMutation({
     mutationFn: (v: { sessionId: number; questionId: number; choice: ChoiceKey }) =>
       db.submitAnswer(v.sessionId, v.questionId, v.choice),
-    onSettled: (_d, _e, v) =>
-      qc.invalidateQueries({ queryKey: playKeys.answer(code, v.questionId) }),
+    onSettled: (_d, _e, v) => {
+      qc.invalidateQueries({ queryKey: playKeys.answer(code, v.questionId) });
+      qc.invalidateQueries({ queryKey: playKeys.result(code, v.questionId) });
+    },
   });
 }
 

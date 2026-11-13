@@ -398,6 +398,7 @@ export type Database = {
         Returns: string
       }
       get_my_progress: { Args: { p_session_id: number }; Returns: Json }
+      get_my_result: { Args: { p_question_id: number; p_session_id: number }; Returns: Json }
       get_participants_overview: {
         Args: never
         Returns: {

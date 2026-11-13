@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CountdownRing } from "@/components/common/CountdownRing";
 import { GlassButton } from "@/components/glass/GlassButton";
+import { cn } from "@/lib/cn";
 import { useCountdown } from "@/lib/sessions";
 import {
   useFinalLeaderboardQuery,
   useMyAnswerQuery,
   useMyProgressQuery,
+  useMyResultQuery,
   useNextQuestion,
   usePlayParticipantQuery,
   usePlayQuestionQuery,
@@ -69,6 +71,8 @@ export default function PlayPage() {
   const question = questionQuery.data;
   const answerQuery = useMyAnswerQuery(room, sessionId, questionId);
   const myAnswer = answerQuery.data ?? null;
+  const resultQuery = useMyResultQuery(room, sessionId, questionId, !!myAnswer);
+  const questionResult = resultQuery.data ?? null;
   const revealQuery = useRevealQuery(room, sessionId, questionId, isReveal);
   const reveal = revealQuery.data ?? null;
   const leaderboardQuery = useFinalLeaderboardQuery(room, sessionId, isFinished);
@@ -252,9 +256,28 @@ export default function PlayPage() {
                   onAnswer={onAnswer}
                 />
 
-                {screen === "locked" && (
-                  <p className="text-center text-base font-bold">Answer locked</p>
-                )}
+                {screen === "locked" &&
+                  (questionResult ? (
+                    <div className="glass flex flex-col items-center gap-1 p-5 text-center">
+                      <p
+                        className={cn(
+                          "text-xl font-extrabold",
+                          questionResult.isCorrect ? "text-success" : "text-danger",
+                        )}
+                      >
+                        {questionResult.isCorrect ? "Correct!" : "Not this time"}
+                      </p>
+                      {questionResult.isCorrect && (
+                        <p className="font-semibold">+{questionResult.pointsAwarded} points</p>
+                      )}
+                      <p className="text-sm text-muted">{questionResult.pointsSoFar} points so far</p>
+                      {!isSelfPaced && (
+                        <p className="mt-1 text-sm text-muted">Waiting for the host…</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-center text-base font-bold">Answer locked</p>
+                  ))}
                 {screen === "timeup" && (
                   <p className="text-center text-base font-bold">Time&apos;s up</p>
                 )}
