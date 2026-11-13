@@ -6,11 +6,12 @@ export const kindLabels: Record<Kind, string> = {
   posttest: "Post-test",
 };
 
-// Tonal chip classes per kind (mirrors web-quizmosa kindColors).
+// Tonal chip classes per kind. Light = berry/sapphire on faint fills;
+// dark = the reference's muted-burgundy + rose / sapphire + lavender-blue.
 export const kindChipClass: Record<Kind, string> = {
-  standard: "bg-primary/12 text-primary",
-  pretest: "bg-info/12 text-info",
-  posttest: "bg-success/15 text-success",
+  standard: "bg-[#8d1b42]/12 text-[#8d1b42] dark:bg-[#4a1222]/50 dark:text-[#e57399]",
+  pretest: "bg-[#1a2a4a]/10 text-[#3c5288] dark:bg-[#1a2a4a]/55 dark:text-[#a1b5e8]",
+  posttest: "bg-success/15 text-[#0b7a4f] dark:text-success",
 };
 
 export const kindOptions = (Object.keys(kindLabels) as Kind[]).map((value) => ({
@@ -26,9 +27,9 @@ export const statusLabels: Record<SessionStatus, string> = {
 };
 
 export const statusChipClass: Record<SessionStatus, string> = {
-  lobby: "bg-info/12 text-info",
-  question: "bg-primary/12 text-primary",
-  reveal: "bg-warning/18 text-warning",
+  lobby: "bg-[#1a2a4a]/10 text-[#3c5288] dark:bg-[#1a2a4a]/55 dark:text-[#a1b5e8]",
+  question: "bg-[#8d1b42]/12 text-[#8d1b42] dark:bg-[#4a1222]/55 dark:text-[#e57399]",
+  reveal: "bg-warning/18 text-[#9a5a1f] dark:text-warning",
   finished: "bg-foreground/8 text-muted",
 };
 

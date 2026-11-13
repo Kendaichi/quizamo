@@ -38,7 +38,7 @@ export function AppLogo({
           style={{ fontSize: size * 0.82 }}
         >
           <span className="text-foreground">quiz</span>
-          <span className="text-primary">amo</span>
+          <span className="text-primary dark:text-[#e57399]">amo</span>
         </span>
       )}
     </span>

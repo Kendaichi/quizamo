@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Make the `dark:` variant follow our .dark class (set by ThemeProvider),
+   not the OS media query. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ------------------------------------------------------------------ *
  * Quizamo — Glassmorphism design system
  * Brand orange kept from Quizmosa; the "new approach" is the glass
@@ -7,58 +11,61 @@
  * ------------------------------------------------------------------ */
 
 :root {
-  /* Brand */
-  --primary: #e0441d;
-  --primary-600: #c53a17;
+  /* Brand — berry + plum */
+  --primary: #8d1b42;
+  --primary-600: #6b1d4f;
   --on-primary: #ffffff;
 
   /* Semantic */
   --success: #07ca6b;
   --warning: #e89558;
   --danger: #ea2143;
-  --info: #1856ff;
+  --info: #5a6fa8;
 
   /* Neutrals (light) */
-  --background: #f3efe9;
+  --background: #f4f2f5;
   --foreground: #17181e;
-  --muted: #5b5c66;
+  --muted: #64748b;
   --surface: #ffffff;
 
   /* Glass material (light) */
   --glass-bg: color-mix(in srgb, var(--surface) 62%, transparent);
   --glass-border: color-mix(in srgb, #ffffff 70%, transparent);
   --glass-highlight: color-mix(in srgb, #ffffff 85%, transparent);
-  --glass-shadow: 0 10px 40px -12px rgba(23, 24, 30, 0.28);
+  --glass-shadow: 0 10px 40px -12px rgba(58, 8, 19, 0.18);
 
   /* Field (inputs) glass */
   --field-bg: color-mix(in srgb, var(--surface) 55%, transparent);
   --field-border: color-mix(in srgb, var(--foreground) 14%, transparent);
 
-  /* Ambient orbs behind the glass */
-  --orb-1: rgba(224, 68, 29, 0.42);
-  --orb-2: rgba(24, 86, 255, 0.22);
-  --orb-3: rgba(232, 149, 88, 0.38);
+  /* Ambient orbs behind the glass — burgundy / midnight / berry */
+  --orb-1: rgba(141, 27, 66, 0.22);
+  --orb-2: rgba(11, 19, 43, 0.12);
+  --orb-3: rgba(107, 29, 79, 0.2);
 
   --radius-glass: 1.5rem;
 }
 
 .dark {
-  --background: #141519;
+  --background: #08090d;
   --foreground: #ffffff;
-  --muted: #b9bac2;
-  --surface: #21222a;
+  --muted: #94a3b8;
+  --surface: #0c0d14;
 
-  --glass-bg: color-mix(in srgb, var(--surface) 55%, transparent);
-  --glass-border: color-mix(in srgb, #ffffff 16%, transparent);
-  --glass-highlight: color-mix(in srgb, #ffffff 22%, transparent);
-  --glass-shadow: 0 16px 48px -14px rgba(0, 0, 0, 0.6);
+  /* Glass panels: #0c0d14 at 70%, so deep burgundy + midnight bleed through. */
+  --glass-bg: color-mix(in srgb, var(--surface) 70%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 12%, transparent);
+  --glass-highlight: color-mix(in srgb, #ffffff 16%, transparent);
+  --glass-shadow: 0 16px 48px -14px rgba(0, 0, 0, 0.7);
 
-  --field-bg: color-mix(in srgb, #ffffff 6%, transparent);
-  --field-border: color-mix(in srgb, #ffffff 16%, transparent);
+  --field-bg: color-mix(in srgb, #ffffff 5%, transparent);
+  --field-border: color-mix(in srgb, #ffffff 14%, transparent);
 
-  --orb-1: rgba(224, 68, 29, 0.5);
-  --orb-2: rgba(24, 86, 255, 0.32);
-  --orb-3: rgba(232, 149, 88, 0.3);
+  /* Berry-wine glow (left) · indigo-navy (right) · plum accent (bottom).
+     Vivid but magenta-leaning so they pop as wine/berry, never orange. */
+  --orb-1: rgba(184, 34, 104, 0.82);
+  --orb-2: rgba(42, 60, 134, 0.8);
+  --orb-3: rgba(158, 42, 118, 0.48);
 }
 
 @theme inline {
@@ -103,10 +110,10 @@ body::before {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(60vw 60vw at 12% 8%, var(--orb-1), transparent 60%),
-    radial-gradient(55vw 55vw at 88% 18%, var(--orb-2), transparent 60%),
-    radial-gradient(50vw 50vw at 72% 92%, var(--orb-3), transparent 62%);
-  filter: saturate(118%);
+    radial-gradient(66vw 66vw at 10% 6%, var(--orb-1), transparent 66%),
+    radial-gradient(62vw 62vw at 90% 16%, var(--orb-2), transparent 66%),
+    radial-gradient(56vw 56vw at 74% 94%, var(--orb-3), transparent 66%);
+  filter: saturate(122%);
   pointer-events: none;
 }
 

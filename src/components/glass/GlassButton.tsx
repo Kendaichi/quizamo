@@ -20,7 +20,7 @@ const sizes: Record<Size, string> = {
 const variants: Record<Variant, string> = {
   // Brand orange, with a glassy top sheen.
   primary:
-    "bg-primary text-on-primary shadow-[0_8px_24px_-8px_rgba(224,68,29,0.6)] " +
+    "bg-primary text-on-primary shadow-[0_8px_24px_-8px_rgba(141,27,66,0.55)] " +
     "hover:bg-primary-600 active:translate-y-px " +
     "before:absolute before:inset-x-0 before:top-0 before:h-1/2 before:rounded-t-full " +
     "before:bg-gradient-to-b before:from-white/30 before:to-transparent before:pointer-events-none",
