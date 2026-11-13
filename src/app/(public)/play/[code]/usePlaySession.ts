@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   QUESTIONS,
-  LOBBY_MS,
   QUESTION_MS,
   REVEAL_MS,
   choiceList,
@@ -28,17 +27,16 @@ export type PlayScreen = "lobby" | "question" | "locked" | "reveal" | "finished"
 const initial = (): State => ({
   phase: "lobby",
   index: 0,
-  endsAt: Date.now() + LOBBY_MS,
+  endsAt: Infinity, // no auto-start: wait in the lobby until the host (real backend) starts
   answers: Array<Answer | null>(QUESTIONS.length).fill(null),
 });
 
-// The mock "host": lobby auto-starts, each question reveals on its deadline,
-// each reveal advances to the next question (or the final once they run out).
+// The mock "host": once a question is live, each reveals on its deadline and
+// each reveal advances to the next (or the final once they run out). The lobby
+// no longer auto-starts — a real host/backend will set phase to "question".
 function advance(prev: State): State {
   const now = Date.now();
   switch (prev.phase) {
-    case "lobby":
-      return { ...prev, phase: "question", index: 0, endsAt: now + QUESTION_MS };
     case "question":
       return { ...prev, phase: "reveal", endsAt: now + REVEAL_MS };
     case "reveal":
@@ -56,7 +54,7 @@ export function usePlaySession(displayName: string) {
 
   // One ticking clock drives both the countdown and the phase transitions.
   useEffect(() => {
-    if (state.phase === "finished") return;
+    if (state.phase === "lobby" || state.phase === "finished") return;
     const id = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(id);
   }, [state.phase]);
