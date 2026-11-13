@@ -38,10 +38,11 @@
   --field-bg: color-mix(in srgb, var(--surface) 55%, transparent);
   --field-border: color-mix(in srgb, var(--foreground) 14%, transparent);
 
-  /* Ambient orbs behind the glass — burgundy / midnight / berry */
-  --orb-1: rgba(141, 27, 66, 0.22);
-  --orb-2: rgba(11, 19, 43, 0.12);
-  --orb-3: rgba(107, 29, 79, 0.2);
+  /* Ambient orbs behind the glass — berry / indigo / plum.
+     Light bg needs vivid hues at a real alpha or they read as grey smudges. */
+  --orb-1: rgba(190, 38, 108, 0.4);
+  --orb-2: rgba(74, 92, 190, 0.26);
+  --orb-3: rgba(150, 44, 118, 0.34);
 
   --radius-glass: 1.5rem;
 }

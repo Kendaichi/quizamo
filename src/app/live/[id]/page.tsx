@@ -108,7 +108,7 @@ export default function BigScreenPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col justify-center">
+      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col justify-center">
         {status === "lobby" && (
           <div className="flex flex-wrap items-center justify-center gap-12 sm:gap-20">
             <div className="text-center sm:text-left">
@@ -127,19 +127,24 @@ export default function BigScreenPage() {
         )}
 
         {status === "question" && isPretest && (
-          <div className="flex flex-col gap-10">
+          <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-20">
             <div>
-              <p className="text-lg font-semibold uppercase tracking-widest text-muted">
-                Pre-test in progress
-              </p>
-              <h2 className="mt-2 text-4xl font-extrabold sm:text-6xl">Answer on your phone</h2>
-              <p className="mt-4 text-2xl font-bold text-muted sm:text-3xl">
+              <h2 className="text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-7xl">
+                Answer on your phone
+              </h2>
+              <p className="mt-6 text-2xl font-semibold text-muted sm:text-3xl">
                 {doneCount} of {participantCount} done
               </p>
             </div>
             <div>
-              <p className="text-sm font-semibold uppercase tracking-widest text-muted">Leaderboard</p>
-              <LeaderboardList rows={leaderboard} limit={8} className="mt-3" />
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted">
+                Leaderboard
+              </p>
+              {leaderboard.length ? (
+                <LeaderboardList rows={leaderboard} limit={8} large className="mt-4" />
+              ) : (
+                <p className="mt-4 text-xl text-muted">No scores yet</p>
+              )}
             </div>
           </div>
         )}
@@ -280,8 +285,8 @@ function RevealView({
       </div>
 
       <div>
-        <p className="text-sm font-semibold uppercase tracking-widest text-muted">Leaderboard</p>
-        <LeaderboardList rows={leaderboard} limit={6} className="mt-3" />
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted">Leaderboard</p>
+        <LeaderboardList rows={leaderboard} limit={6} large className="mt-4" />
       </div>
     </div>
   );
