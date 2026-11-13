@@ -76,6 +76,14 @@ export default function HomePage() {
       </div>
 
       <Link
+        href="/demo"
+        className="glass inline-flex items-center gap-2 !rounded-full px-5 py-2.5 text-sm font-bold text-primary transition hover:brightness-105"
+      >
+        New here? Try a quick demo
+        <ArrowRight className="size-4" />
+      </Link>
+
+      <Link
         href="/login"
         className="text-sm font-medium text-muted underline-offset-4 hover:text-foreground hover:underline"
       >
