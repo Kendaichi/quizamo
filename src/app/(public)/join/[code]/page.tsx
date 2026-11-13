@@ -43,7 +43,9 @@ export default function JoinPage() {
       } catch {}
       router.push(`/play/${room}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not join this quiz");
+      // Supabase errors are plain objects with .message, not Error instances.
+      const message = (err as { message?: string })?.message;
+      setError(message || "Could not join this quiz");
       setBusy(false);
     }
   };
