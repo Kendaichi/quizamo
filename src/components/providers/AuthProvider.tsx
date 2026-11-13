@@ -1,13 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-
-// shortcut: mock auth with no real backend. Swap signIn/signOut for Supabase
-// auth calls when the backend is wired (see web-quizmosa/src/stores/authUser.ts).
+import { supabase } from "@/lib/supabase";
 
 export type AuthUser = { id: string; email: string };
-
-const STORAGE_KEY = "quizamo-auth";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -23,28 +19,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {}
-    setReady(true);
+    // Read any persisted session, then keep in sync with auth changes.
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user;
+      setUser(u ? { id: u.id, email: u.email ?? "" } : null);
+      setReady(true);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user;
+      setUser(u ? { id: u.id, email: u.email ?? "" } : null);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    await new Promise((r) => setTimeout(r, 450)); // mimic network latency
-    if (!email.trim() || !password) throw new Error("Invalid email or password");
-    const next: AuthUser = { id: "mock-admin", email: email.trim() };
-    setUser(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {}
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) throw new Error(error.message);
+    // onAuthStateChange sets the user.
   }, []);
 
   const signOut = useCallback(() => {
+    supabase.auth.signOut();
     setUser(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {}
   }, []);
 
   return (

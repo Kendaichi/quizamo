@@ -1,24 +1,28 @@
-// shortcut: mock questionnaire/question store over localStorage, no backend.
-// Stands in for web-quizmosa/src/stores/questionnaires.ts (Supabase). The
-// react-query hooks in questionnaires.ts call these; swap these bodies for
-// Supabase reads/writes when the backend lands and the hooks stay unchanged.
+// Supabase-backed data layer for the admin app. Keeps the same camelCase shapes
+// the hooks/components use, mapping the snake_case rows + RPCs underneath, so the
+// react-query hooks and screens are unchanged.
+// (Filename kept as mockDb for now to avoid churn; it is no longer a mock.)
+// The quizzer play/join pages still use their own demo until anonymous sign-in
+// and the play flow are wired.
+
+import { supabase } from "./supabase";
 
 export type Kind = "standard" | "pretest" | "posttest";
 export type ChoiceKey = "A" | "B" | "C" | "D";
+export type SessionStatus = "lobby" | "question" | "reveal" | "finished";
 
 export type Questionnaire = {
   id: number;
   name: string;
   kind: Kind;
   secondsPerQuestion: number;
-  createdAt: string; // ISO
+  createdAt: string;
 };
 
 export type Question = {
   id: number;
   questionnaireId: number;
   prompt: string;
-  // Unused choices (typically C/D) are empty strings.
   choices: Record<ChoiceKey, string>;
   correct: ChoiceKey;
   points: number;
@@ -28,8 +32,6 @@ export type Question = {
 
 export type QuestionnaireWithCounts = Questionnaire & {
   questionCount: number;
-  // Always 0 until the hosts/sessions slice exists; kept so the UI and the
-  // later Supabase swap already have the field.
   sessionCount: number;
 };
 
@@ -50,8 +52,6 @@ export type QuestionInput = {
   secondsOverride: number | null;
 };
 
-export type SessionStatus = "lobby" | "question" | "reveal" | "finished";
-
 export type Session = {
   id: number;
   joinCode: string;
@@ -62,7 +62,6 @@ export type Session = {
   questionEndsAt: string | null;
   createdAt: string;
   finishedAt: string | null;
-  // Mock: final "answered" count per question id, fixed when the question starts.
   answered: Record<number, number>;
 };
 
@@ -78,333 +77,6 @@ export type SessionWithMeta = Session & {
   questionnaire: { name: string; kind: Kind } | null;
   participantCount: number;
 };
-
-type Store = {
-  nextId: number;
-  questionnaires: Questionnaire[];
-  questions: Question[];
-  sessions: Session[];
-  participants: Participant[];
-};
-
-const STORAGE_KEY = "quizamo-mockdb";
-
-const seed = (): Store => {
-  const now = Date.now();
-  const iso = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toISOString();
-  const demo: Array<[string, ChoiceKey, [string, string, string, string]]> = [
-    ["Which planet is known as the Red Planet?", "B", ["Venus", "Mars", "Jupiter", "Mercury"]],
-    ["What does “HTTP” stand for?", "A", [
-      "HyperText Transfer Protocol",
-      "High Transfer Text Process",
-      "Hyperlink Transfer Protocol",
-      "Home Tool Transfer Protocol",
-    ]],
-    ["How many continents are there on Earth?", "C", ["Five", "Six", "Seven", "Eight"]],
-    ["Which language runs natively in a web browser?", "D", ["Python", "C++", "Java", "JavaScript"]],
-    ["What is the largest ocean on Earth?", "D", ["Atlantic", "Indian", "Arctic", "Pacific"]],
-  ];
-  const questions: Question[] = demo.map(([prompt, correct, [a, b, c, d]], i) => ({
-    id: 100 + i,
-    questionnaireId: 1,
-    prompt,
-    choices: { A: a, B: b, C: c, D: d },
-    correct,
-    points: 1000,
-    secondsOverride: null,
-    position: i,
-  }));
-  return {
-    nextId: 200,
-    questionnaires: [
-      { id: 1, name: "General Knowledge", kind: "standard", secondsPerQuestion: 15, createdAt: iso(2) },
-      { id: 2, name: "Onboarding Pre-test", kind: "pretest", secondsPerQuestion: 20, createdAt: iso(0) },
-    ],
-    questions,
-    sessions: [],
-    participants: [],
-  };
-};
-
-function read(): Store {
-  if (typeof window === "undefined")
-    return { nextId: 1, questionnaires: [], questions: [], sessions: [], participants: [] };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Store;
-      // Carry stores seeded before the sessions slice existed.
-      parsed.sessions ??= [];
-      parsed.participants ??= [];
-      return parsed;
-    }
-  } catch {}
-  const fresh = seed();
-  write(fresh);
-  return fresh;
-}
-
-function write(store: Store) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  } catch {}
-}
-
-// Mimic network latency so loading states are exercised.
-const delay = <T>(value: T, ms = 220): Promise<T> =>
-  new Promise((resolve) => setTimeout(() => resolve(value), ms));
-
-const withCounts = (store: Store, q: Questionnaire): QuestionnaireWithCounts => ({
-  ...q,
-  questionCount: store.questions.filter((x) => x.questionnaireId === q.id).length,
-  sessionCount: 0,
-});
-
-export function listQuestionnaires(): Promise<QuestionnaireWithCounts[]> {
-  const store = read();
-  const rows = [...store.questionnaires]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map((q) => withCounts(store, q));
-  return delay(rows);
-}
-
-export function getQuestionnaire(id: number): Promise<QuestionnaireWithCounts> {
-  const store = read();
-  const found = store.questionnaires.find((q) => q.id === id);
-  if (!found) return Promise.reject(new Error("Questionnaire not found"));
-  return delay(withCounts(store, found));
-}
-
-export function saveQuestionnaire(input: QuestionnaireInput): Promise<number> {
-  const store = read();
-  if (input.id !== null) {
-    const row = store.questionnaires.find((q) => q.id === input.id);
-    if (!row) return Promise.reject(new Error("Questionnaire not found"));
-    row.name = input.name;
-    row.kind = input.kind;
-    row.secondsPerQuestion = input.secondsPerQuestion;
-    write(store);
-    return delay(row.id);
-  }
-  const id = store.nextId++;
-  store.questionnaires.push({
-    id,
-    name: input.name,
-    kind: input.kind,
-    secondsPerQuestion: input.secondsPerQuestion,
-    createdAt: new Date().toISOString(),
-  });
-  write(store);
-  return delay(id);
-}
-
-export function deleteQuestionnaire(id: number): Promise<void> {
-  const store = read();
-  store.questionnaires = store.questionnaires.filter((q) => q.id !== id);
-  store.questions = store.questions.filter((q) => q.questionnaireId !== id);
-  write(store);
-  return delay(undefined);
-}
-
-export function listQuestions(questionnaireId: number): Promise<Question[]> {
-  const store = read();
-  const rows = store.questions
-    .filter((q) => q.questionnaireId === questionnaireId)
-    .sort((a, b) => a.position - b.position);
-  return delay(rows);
-}
-
-export function saveQuestion(input: QuestionInput): Promise<void> {
-  const store = read();
-  if (input.id !== null) {
-    const row = store.questions.find((q) => q.id === input.id);
-    if (!row) return Promise.reject(new Error("Question not found"));
-    Object.assign(row, {
-      prompt: input.prompt,
-      choices: input.choices,
-      correct: input.correct,
-      points: input.points,
-      secondsOverride: input.secondsOverride,
-    });
-    write(store);
-    return delay(undefined);
-  }
-  const siblings = store.questions.filter((q) => q.questionnaireId === input.questionnaireId);
-  const position = siblings.reduce((max, q) => Math.max(max, q.position + 1), 0);
-  store.questions.push({
-    id: store.nextId++,
-    questionnaireId: input.questionnaireId,
-    prompt: input.prompt,
-    choices: input.choices,
-    correct: input.correct,
-    points: input.points,
-    secondsOverride: input.secondsOverride,
-    position,
-  });
-  write(store);
-  return delay(undefined);
-}
-
-export function deleteQuestion(id: number): Promise<void> {
-  const store = read();
-  store.questions = store.questions.filter((q) => q.id !== id);
-  write(store);
-  return delay(undefined);
-}
-
-export function reorderQuestions(ids: number[]): Promise<void> {
-  const store = read();
-  const order = new Map(ids.map((id, index) => [id, index]));
-  for (const q of store.questions) {
-    const next = order.get(q.id);
-    if (next !== undefined) q.position = next;
-  }
-  write(store);
-  return delay(undefined);
-}
-
-// Sessions (hosts) ---------------------------------------------------------
-// shortcut: no real quizzers. Participants are seeded bots and "answered"
-// counts are random targets, so the host control flow is demoable without
-// realtime. Swap for Supabase create_session / start_question / realtime.
-
-const BOT_NAMES = ["Mara", "Dex", "Lin", "Ava", "Theo", "Noa", "Kai", "Rue", "Sol", "Pia"];
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O/1/I/L
-
-function genJoinCode(): string {
-  let code = "";
-  for (let i = 0; i < 6; i++)
-    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  return code;
-}
-
-const sessionMeta = (store: Store, s: Session): SessionWithMeta => {
-  const qn = store.questionnaires.find((q) => q.id === s.questionnaireId) ?? null;
-  return {
-    ...s,
-    questionnaire: qn ? { name: qn.name, kind: qn.kind } : null,
-    participantCount: store.participants.filter((p) => p.sessionId === s.id && !p.isKicked).length,
-  };
-};
-
-export function createSession(questionnaireId: number): Promise<number> {
-  const store = read();
-  const qn = store.questionnaires.find((q) => q.id === questionnaireId);
-  if (!qn) return Promise.reject(new Error("Questionnaire not found"));
-  if (store.questions.filter((q) => q.questionnaireId === questionnaireId).length === 0)
-    return Promise.reject(new Error("Add questions before hosting this questionnaire"));
-
-  const id = store.nextId++;
-  store.sessions.push({
-    id,
-    joinCode: genJoinCode(),
-    questionnaireId,
-    status: "lobby",
-    currentQuestionId: null,
-    questionStartedAt: null,
-    questionEndsAt: null,
-    createdAt: new Date().toISOString(),
-    finishedAt: null,
-    answered: {},
-  });
-  // Seed a few bots so the lobby and participant list aren't empty.
-  const count = 3 + Math.floor(Math.random() * 3);
-  const names = [...BOT_NAMES].sort(() => Math.random() - 0.5).slice(0, count);
-  names.forEach((name, i) => {
-    store.participants.push({
-      id: store.nextId++,
-      sessionId: id,
-      displayName: `${name} ${String.fromCharCode(65 + i)}.`,
-      joinedAt: new Date(Date.now() + i).toISOString(),
-      isKicked: false,
-    });
-  });
-  write(store);
-  return delay(id);
-}
-
-export function listSessions(): Promise<SessionWithMeta[]> {
-  const store = read();
-  const rows = [...store.sessions]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map((s) => sessionMeta(store, s));
-  return delay(rows);
-}
-
-export function getSession(id: number): Promise<SessionWithMeta> {
-  const store = read();
-  const found = store.sessions.find((s) => s.id === id);
-  if (!found) return Promise.reject(new Error("Host not found"));
-  return delay(sessionMeta(store, found));
-}
-
-export function listParticipants(sessionId: number): Promise<Participant[]> {
-  const store = read();
-  const rows = store.participants
-    .filter((p) => p.sessionId === sessionId)
-    .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
-  return delay(rows);
-}
-
-function mutateSession(id: number, fn: (s: Session, store: Store) => void): Promise<void> {
-  const store = read();
-  const s = store.sessions.find((x) => x.id === id);
-  if (!s) return Promise.reject(new Error("Host not found"));
-  fn(s, store);
-  write(store);
-  return delay(undefined);
-}
-
-export function startQuestion(sessionId: number, questionId: number): Promise<void> {
-  return mutateSession(sessionId, (s, store) => {
-    const question = store.questions.find((q) => q.id === questionId);
-    const qn = store.questionnaires.find((q) => q.id === s.questionnaireId);
-    const seconds = question?.secondsOverride ?? qn?.secondsPerQuestion ?? 15;
-    const active = store.participants.filter((p) => p.sessionId === sessionId && !p.isKicked).length;
-    const now = Date.now();
-    s.status = "question";
-    s.currentQuestionId = questionId;
-    s.questionStartedAt = new Date(now).toISOString();
-    s.questionEndsAt = new Date(now + seconds * 1000).toISOString();
-    // Most but not all of the room answers; fixed now so reveal is stable.
-    s.answered[questionId] = Math.round(active * (0.6 + Math.random() * 0.4));
-  });
-}
-
-export function revealQuestion(sessionId: number): Promise<void> {
-  return mutateSession(sessionId, (s) => {
-    s.status = "reveal";
-  });
-}
-
-export function finishSession(sessionId: number): Promise<void> {
-  return mutateSession(sessionId, (s) => {
-    s.status = "finished";
-    s.finishedAt = new Date().toISOString();
-  });
-}
-
-export function returnToLobby(sessionId: number): Promise<void> {
-  return mutateSession(sessionId, (s) => {
-    s.status = "lobby";
-    s.currentQuestionId = null;
-    s.questionStartedAt = null;
-    s.questionEndsAt = null;
-  });
-}
-
-export function kickParticipant(participantId: number): Promise<void> {
-  const store = read();
-  const p = store.participants.find((x) => x.id === participantId);
-  if (p) p.isKicked = true;
-  write(store);
-  return delay(undefined);
-}
-
-// Results / history ---------------------------------------------------------
-// shortcut: no real answers, so scores and per-question accuracy are derived
-// deterministically from ids (stable across reloads). Swap for get_leaderboard
-// / get_session_report / get_history when Supabase lands.
 
 export type LeaderboardEntry = { participantId: number; name: string; score: number; rank: number };
 export type ReportQuestion = {
@@ -432,80 +104,6 @@ export type HistoryRow = {
   averageScore: number;
   averageAccuracy: number | null;
 };
-
-const scoreFor = (participantId: number) => 500 + ((participantId * 977) % 36) * 100; // 500–4000
-const accuracyFracFor = (questionId: number) => 0.35 + ((questionId * 7) % 56) / 100; // 0.35–0.90
-const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-
-function buildReport(store: Store, s: Session): SessionReport {
-  const active = store.participants.filter((p) => p.sessionId === s.id && !p.isKicked);
-  const leaderboard: LeaderboardEntry[] = active
-    .map((p) => ({ participantId: p.id, name: p.displayName, score: scoreFor(p.id) }))
-    .sort((a, b) => b.score - a.score)
-    .map((e, i) => ({ ...e, rank: i + 1 }));
-
-  const questions: ReportQuestion[] = store.questions
-    .filter((q) => q.questionnaireId === s.questionnaireId)
-    .sort((a, b) => a.position - b.position)
-    .map((q, i) => {
-      const answered = s.answered[q.id] ?? 0;
-      const correct = answered > 0 ? Math.round(answered * accuracyFracFor(q.id)) : 0;
-      return {
-        questionId: q.id,
-        position: i + 1,
-        prompt: q.prompt,
-        answered,
-        correct,
-        accuracy: answered > 0 ? correct / answered : null,
-      };
-    });
-
-  const answeredQuestions = questions.filter((q) => q.accuracy !== null);
-  return {
-    leaderboard,
-    questions,
-    participantCount: active.length,
-    averageScore: Math.round(mean(leaderboard.map((e) => e.score))),
-    averageAccuracy: answeredQuestions.length
-      ? mean(answeredQuestions.map((q) => q.accuracy as number))
-      : null,
-  };
-}
-
-export function getSessionReport(sessionId: number): Promise<SessionReport> {
-  const store = read();
-  const s = store.sessions.find((x) => x.id === sessionId);
-  if (!s) return Promise.reject(new Error("Host not found"));
-  return delay(buildReport(store, s));
-}
-
-// Per-choice answer counts for the big screen. Deterministic: the correct
-// choice gets accuracyFracFor's share, the rest is spread over the others.
-export function getAnswerDistribution(
-  sessionId: number,
-  questionId: number,
-): Promise<Record<ChoiceKey, number>> {
-  const store = read();
-  const dist: Record<ChoiceKey, number> = { A: 0, B: 0, C: 0, D: 0 };
-  const s = store.sessions.find((x) => x.id === sessionId);
-  const q = store.questions.find((x) => x.id === questionId);
-  if (!s || !q) return delay(dist);
-
-  const answered = s.answered[questionId] ?? 0;
-  const keys = (["A", "B", "C", "D"] as ChoiceKey[]).filter((k) => q.choices[k]);
-  const correctCount = Math.round(answered * accuracyFracFor(questionId));
-  dist[q.correct] = Math.min(correctCount, answered);
-
-  const wrong = keys.filter((k) => k !== q.correct);
-  let remaining = answered - dist[q.correct];
-  wrong.forEach((k, i) => {
-    const share = Math.floor(remaining / (wrong.length - i));
-    dist[k] = share;
-    remaining -= share;
-  });
-  return delay(dist);
-}
-
 export type ParticipantOverviewRow = {
   participantId: number;
   displayName: string;
@@ -518,47 +116,361 @@ export type ParticipantOverviewRow = {
   sessionId: number;
 };
 
-// Every participant across every host (get_participants_overview).
-export function listParticipantsOverview(): Promise<ParticipantOverviewRow[]> {
-  const store = read();
-  const rows = store.participants
-    .map((p): ParticipantOverviewRow => {
-      const session = store.sessions.find((s) => s.id === p.sessionId);
-      const qn = session && store.questionnaires.find((q) => q.id === session.questionnaireId);
-      return {
-        participantId: p.id,
-        displayName: p.displayName,
-        isKicked: p.isKicked,
-        joinCode: session?.joinCode ?? "—",
-        joinedAt: p.joinedAt,
-        kind: qn ? qn.kind : "standard",
-        questionnaireName: qn ? qn.name : "—",
-        score: scoreFor(p.id),
-        sessionId: p.sessionId,
-      };
-    })
-    .sort((a, b) => b.joinedAt.localeCompare(a.joinedAt));
-  return delay(rows);
+// save_question's generated Args type marks its nullable params as required.
+const arg = <T>(v: T | null) => v as T;
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+
+async function hostId(): Promise<number> {
+  const { data, error } = await supabase.rpc("my_host_id");
+  if (error) throw error;
+  return data as number;
 }
 
-export function listHistory(): Promise<HistoryRow[]> {
-  const store = read();
-  const rows = store.sessions
-    .filter((s) => s.status === "finished")
-    .map((s): HistoryRow => {
-      const qn = store.questionnaires.find((q) => q.id === s.questionnaireId);
-      const report = buildReport(store, s);
-      return {
-        sessionId: s.id,
-        joinCode: s.joinCode,
-        questionnaireName: qn?.name ?? "—",
-        kind: qn?.kind ?? "standard",
-        endedAt: s.finishedAt ?? s.createdAt,
-        participantCount: report.participantCount,
-        averageScore: report.averageScore,
-        averageAccuracy: report.averageAccuracy,
-      };
-    })
-    .sort((a, b) => b.endedAt.localeCompare(a.endedAt));
-  return delay(rows);
+// Questionnaires --------------------------------------------------------------
+type CountRow = { count: number }[];
+
+export async function listQuestionnaires(): Promise<QuestionnaireWithCounts[]> {
+  const { data, error } = await supabase
+    .from("questionnaires")
+    .select("*, questions(count), sessions(count)")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((q) => ({
+    id: q.id,
+    name: q.name,
+    kind: q.kind,
+    secondsPerQuestion: q.seconds_per_question,
+    createdAt: q.created_at,
+    questionCount: (q.questions as CountRow)?.[0]?.count ?? 0,
+    sessionCount: (q.sessions as CountRow)?.[0]?.count ?? 0,
+  }));
+}
+
+export async function getQuestionnaire(id: number): Promise<QuestionnaireWithCounts> {
+  const { data, error } = await supabase
+    .from("questionnaires")
+    .select("*, questions(count), sessions(count)")
+    .eq("id", id)
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    name: data.name,
+    kind: data.kind,
+    secondsPerQuestion: data.seconds_per_question,
+    createdAt: data.created_at,
+    questionCount: (data.questions as CountRow)?.[0]?.count ?? 0,
+    sessionCount: (data.sessions as CountRow)?.[0]?.count ?? 0,
+  };
+}
+
+export async function saveQuestionnaire(input: QuestionnaireInput): Promise<number> {
+  const values = {
+    name: input.name,
+    kind: input.kind,
+    seconds_per_question: input.secondsPerQuestion,
+  };
+  if (input.id !== null) {
+    const { error } = await supabase.from("questionnaires").update(values).eq("id", input.id);
+    if (error) throw error;
+    return input.id;
+  }
+  const { data, error } = await supabase
+    .from("questionnaires")
+    .insert({ ...values, host_id: await hostId() })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function deleteQuestionnaire(id: number): Promise<void> {
+  const { error } = await supabase.from("questionnaires").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Questions -------------------------------------------------------------------
+type QuestionRow = {
+  id: number;
+  questionnaire_id: number;
+  prompt: string;
+  choice_a: string;
+  choice_b: string;
+  choice_c: string | null;
+  choice_d: string | null;
+  points: number;
+  position: number;
+  seconds_override: number | null;
+  question_keys: { correct_choice: string } | { correct_choice: string }[] | null;
+};
+
+function mapQuestion(row: QuestionRow): Question {
+  const key = Array.isArray(row.question_keys) ? row.question_keys[0] : row.question_keys;
+  return {
+    id: row.id,
+    questionnaireId: row.questionnaire_id,
+    prompt: row.prompt,
+    choices: { A: row.choice_a, B: row.choice_b, C: row.choice_c ?? "", D: row.choice_d ?? "" },
+    correct: (key?.correct_choice ?? "A") as ChoiceKey,
+    points: row.points,
+    secondsOverride: row.seconds_override,
+    position: row.position,
+  };
+}
+
+export async function listQuestions(questionnaireId: number): Promise<Question[]> {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("*, question_keys(correct_choice)")
+    .eq("questionnaire_id", questionnaireId)
+    .order("position");
+  if (error) throw error;
+  return (data as unknown as QuestionRow[]).map(mapQuestion);
+}
+
+export async function saveQuestion(input: QuestionInput): Promise<void> {
+  const { error } = await supabase.rpc("save_question", {
+    p_questionnaire_id: input.questionnaireId,
+    p_question_id: arg(input.id),
+    p_prompt: input.prompt,
+    p_image_path: arg<string>(null),
+    p_choice_a: input.choices.A,
+    p_choice_b: input.choices.B,
+    p_choice_c: input.choices.C,
+    p_choice_d: input.choices.D,
+    p_correct: input.correct,
+    p_points: input.points,
+    p_seconds_override: arg(input.secondsOverride),
+  });
+  if (error) throw error;
+}
+
+export async function deleteQuestion(id: number): Promise<void> {
+  const { error } = await supabase.from("questions").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function reorderQuestions(questionnaireId: number, ids: number[]): Promise<void> {
+  const { error } = await supabase.rpc("reorder_questions", {
+    p_questionnaire_id: questionnaireId,
+    p_ids: ids,
+  });
+  if (error) throw error;
+}
+
+// Sessions (hosts) ------------------------------------------------------------
+type SessionRow = {
+  id: number;
+  join_code: string;
+  questionnaire_id: number;
+  status: SessionStatus;
+  current_question_id: number | null;
+  question_started_at: string | null;
+  question_ends_at: string | null;
+  created_at: string;
+  ended_at: string | null;
+  questionnaires: { name: string; kind: Kind } | { name: string; kind: Kind }[] | null;
+  participants?: CountRow;
+};
+
+function mapSession(row: SessionRow, answered: Record<number, number>): SessionWithMeta {
+  const qn = Array.isArray(row.questionnaires) ? row.questionnaires[0] : row.questionnaires;
+  return {
+    id: row.id,
+    joinCode: row.join_code,
+    questionnaireId: row.questionnaire_id,
+    status: row.status,
+    currentQuestionId: row.current_question_id,
+    questionStartedAt: row.question_started_at,
+    questionEndsAt: row.question_ends_at,
+    createdAt: row.created_at,
+    finishedAt: row.ended_at,
+    answered,
+    questionnaire: qn ? { name: qn.name, kind: qn.kind } : null,
+    participantCount: row.participants?.[0]?.count ?? 0,
+  };
+}
+
+export async function createSession(questionnaireId: number): Promise<number> {
+  const { data, error } = await supabase.rpc("create_session", {
+    p_questionnaire_id: questionnaireId,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+export async function listSessions(): Promise<SessionWithMeta[]> {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*, questionnaires(name, kind), participants(count)")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data as unknown as SessionRow[]).map((s) => mapSession(s, {}));
+}
+
+async function answeredCounts(sessionId: number): Promise<Record<number, number>> {
+  const { data, error } = await supabase
+    .from("answers")
+    .select("question_id")
+    .eq("session_id", sessionId);
+  if (error) throw error;
+  const counts: Record<number, number> = {};
+  for (const a of data ?? []) counts[a.question_id] = (counts[a.question_id] ?? 0) + 1;
+  return counts;
+}
+
+export async function getSession(id: number): Promise<SessionWithMeta> {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*, questionnaires(name, kind), participants(count)")
+    .eq("id", id)
+    .single();
+  if (error) throw error;
+  return mapSession(data as unknown as SessionRow, await answeredCounts(id));
+}
+
+export async function listParticipants(sessionId: number): Promise<Participant[]> {
+  const { data, error } = await supabase
+    .from("participants")
+    .select("id, session_id, display_name, joined_at, is_kicked")
+    .eq("session_id", sessionId)
+    .order("joined_at");
+  if (error) throw error;
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    sessionId: p.session_id,
+    displayName: p.display_name,
+    joinedAt: p.joined_at,
+    isKicked: p.is_kicked,
+  }));
+}
+
+async function rpcVoid(
+  fn: "reveal_question" | "finish_session" | "return_to_lobby",
+  sessionId: number,
+): Promise<void> {
+  const { error } = await supabase.rpc(fn, { p_session_id: sessionId });
+  if (error) throw error;
+}
+
+export async function startQuestion(sessionId: number, questionId: number): Promise<void> {
+  const { error } = await supabase.rpc("start_question", {
+    p_session_id: sessionId,
+    p_question_id: questionId,
+  });
+  if (error) throw error;
+}
+
+export const revealQuestion = (sessionId: number) => rpcVoid("reveal_question", sessionId);
+export const finishSession = (sessionId: number) => rpcVoid("finish_session", sessionId);
+export const returnToLobby = (sessionId: number) => rpcVoid("return_to_lobby", sessionId);
+
+export async function kickParticipant(participantId: number): Promise<void> {
+  const { error } = await supabase
+    .from("participants")
+    .update({ is_kicked: true })
+    .eq("id", participantId);
+  if (error) throw error;
+}
+
+export async function getAnswerDistribution(
+  sessionId: number,
+  questionId: number,
+): Promise<Record<ChoiceKey, number>> {
+  const dist: Record<ChoiceKey, number> = { A: 0, B: 0, C: 0, D: 0 };
+  const { data, error } = await supabase
+    .from("answers")
+    .select("selected_choice")
+    .eq("session_id", sessionId)
+    .eq("question_id", questionId);
+  if (error) throw error;
+  for (const a of data ?? []) {
+    const k = a.selected_choice as ChoiceKey;
+    if (k in dist) dist[k] += 1;
+  }
+  return dist;
+}
+
+// Results / history -----------------------------------------------------------
+type ReportJson = {
+  scores: number[];
+  questions: {
+    question_id: number;
+    position: number;
+    prompt: string;
+    answered: number;
+    correct: number;
+    accuracy: number | null;
+  }[];
+};
+
+export async function getSessionReport(sessionId: number): Promise<SessionReport> {
+  const [lb, rep] = await Promise.all([
+    supabase.rpc("get_leaderboard", { p_session_id: sessionId }),
+    supabase.rpc("get_session_report", { p_session_id: sessionId }),
+  ]);
+  if (lb.error) throw lb.error;
+  if (rep.error) throw rep.error;
+
+  const leaderboard: LeaderboardEntry[] = (lb.data ?? []).map((r) => ({
+    participantId: r.participant_id,
+    name: r.display_name,
+    score: Number(r.score),
+    rank: Number(r.rank),
+  }));
+  const report = rep.data as unknown as ReportJson;
+  const questions: ReportQuestion[] = (report?.questions ?? []).map((q) => ({
+    questionId: q.question_id,
+    position: q.position,
+    prompt: q.prompt,
+    answered: Number(q.answered),
+    correct: Number(q.correct),
+    accuracy: q.accuracy === null ? null : Number(q.accuracy),
+  }));
+  const answeredQuestions = questions.filter((q) => q.accuracy !== null);
+  return {
+    leaderboard,
+    questions,
+    participantCount: leaderboard.length,
+    averageScore: Math.round(mean(leaderboard.map((e) => e.score))),
+    averageAccuracy: answeredQuestions.length
+      ? mean(answeredQuestions.map((q) => q.accuracy as number))
+      : null,
+  };
+}
+
+export async function listHistory(): Promise<HistoryRow[]> {
+  const [hist, sess] = await Promise.all([
+    supabase.rpc("get_history"),
+    supabase.from("sessions").select("id, join_code"),
+  ]);
+  if (hist.error) throw hist.error;
+  if (sess.error) throw sess.error;
+  const codes = new Map((sess.data ?? []).map((s) => [s.id, s.join_code]));
+  return (hist.data ?? []).map((r) => ({
+    sessionId: r.session_id,
+    joinCode: codes.get(r.session_id) ?? "—",
+    questionnaireName: r.questionnaire_name,
+    kind: r.kind,
+    endedAt: r.ended_at,
+    participantCount: Number(r.participant_count),
+    averageScore: Number(r.average_score),
+    averageAccuracy: r.average_accuracy === null ? null : Number(r.average_accuracy),
+  }));
+}
+
+export async function listParticipantsOverview(): Promise<ParticipantOverviewRow[]> {
+  const { data, error } = await supabase.rpc("get_participants_overview");
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    participantId: r.participant_id,
+    displayName: r.display_name,
+    isKicked: r.is_kicked,
+    joinCode: r.join_code,
+    joinedAt: r.joined_at,
+    kind: r.kind,
+    questionnaireName: r.questionnaire_name,
+    score: Number(r.score),
+    sessionId: r.session_id,
+  }));
 }

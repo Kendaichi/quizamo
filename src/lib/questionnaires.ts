@@ -76,7 +76,7 @@ export function useDeleteQuestion(questionnaireId: number) {
 export function useReorderQuestions(questionnaireId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (ids: number[]) => db.reorderQuestions(ids),
+    mutationFn: (ids: number[]) => db.reorderQuestions(questionnaireId, ids),
     // Runs after success and failure, so the list snaps back to the saved order.
     onSettled: () =>
       qc.invalidateQueries({ queryKey: questionnaireKeys.questions(questionnaireId) }),
