@@ -71,7 +71,9 @@ export default function PlayPage() {
   const question = questionQuery.data;
   const answerQuery = useMyAnswerQuery(room, sessionId, questionId);
   const myAnswer = answerQuery.data ?? null;
-  const resultQuery = useMyResultQuery(room, sessionId, questionId, !!myAnswer);
+  // Instant feedback is a self-paced (pre-test) thing only; standard/post-test
+  // stay host-paced and reveal nothing until the host does.
+  const resultQuery = useMyResultQuery(room, sessionId, questionId, isSelfPaced && !!myAnswer);
   const questionResult = resultQuery.data ?? null;
   const revealQuery = useRevealQuery(room, sessionId, questionId, isReveal);
   const reveal = revealQuery.data ?? null;
@@ -257,7 +259,7 @@ export default function PlayPage() {
                 />
 
                 {screen === "locked" &&
-                  (questionResult ? (
+                  (isSelfPaced && questionResult ? (
                     <div className="glass flex flex-col items-center gap-1 p-5 text-center">
                       <p
                         className={cn(
@@ -271,12 +273,11 @@ export default function PlayPage() {
                         <p className="font-semibold">+{questionResult.pointsAwarded} points</p>
                       )}
                       <p className="text-sm text-muted">{questionResult.pointsSoFar} points so far</p>
-                      {!isSelfPaced && (
-                        <p className="mt-1 text-sm text-muted">Waiting for the host…</p>
-                      )}
                     </div>
                   ) : (
-                    <p className="text-center text-base font-bold">Answer locked</p>
+                    <p className="text-center text-base font-bold">
+                      Answer locked{!isSelfPaced && " — waiting for the host…"}
+                    </p>
                   ))}
                 {screen === "timeup" && (
                   <p className="text-center text-base font-bold">Time&apos;s up</p>
