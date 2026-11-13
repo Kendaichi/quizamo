@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  /* Cache Components (PPR) off: this app is dynamic/client-heavy, and its
+     static-purity rules add friction without benefit here. */
+  cacheComponents: false,
   turbopack: {
     rules: {
       "*.css": {

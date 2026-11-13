@@ -1,26 +1,179 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ *
+ * Quizamo — Glassmorphism design system
+ * Brand orange kept from Quizmosa; the "new approach" is the glass
+ * material: translucent frosted panels over a warm gradient field.
+ * ------------------------------------------------------------------ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand */
+  --primary: #e0441d;
+  --primary-600: #c53a17;
+  --on-primary: #ffffff;
+
+  /* Semantic */
+  --success: #07ca6b;
+  --warning: #e89558;
+  --danger: #ea2143;
+  --info: #1856ff;
+
+  /* Neutrals (light) */
+  --background: #f3efe9;
+  --foreground: #17181e;
+  --muted: #5b5c66;
+  --surface: #ffffff;
+
+  /* Glass material (light) */
+  --glass-bg: color-mix(in srgb, var(--surface) 62%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 70%, transparent);
+  --glass-highlight: color-mix(in srgb, #ffffff 85%, transparent);
+  --glass-shadow: 0 10px 40px -12px rgba(23, 24, 30, 0.28);
+
+  /* Field (inputs) glass */
+  --field-bg: color-mix(in srgb, var(--surface) 55%, transparent);
+  --field-border: color-mix(in srgb, var(--foreground) 14%, transparent);
+
+  /* Ambient orbs behind the glass */
+  --orb-1: rgba(224, 68, 29, 0.42);
+  --orb-2: rgba(24, 86, 255, 0.22);
+  --orb-3: rgba(232, 149, 88, 0.38);
+
+  --radius-glass: 1.5rem;
+}
+
+.dark {
+  --background: #141519;
+  --foreground: #ffffff;
+  --muted: #b9bac2;
+  --surface: #21222a;
+
+  --glass-bg: color-mix(in srgb, var(--surface) 55%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 16%, transparent);
+  --glass-highlight: color-mix(in srgb, #ffffff 22%, transparent);
+  --glass-shadow: 0 16px 48px -14px rgba(0, 0, 0, 0.6);
+
+  --field-bg: color-mix(in srgb, #ffffff 6%, transparent);
+  --field-border: color-mix(in srgb, #ffffff 16%, transparent);
+
+  --orb-1: rgba(224, 68, 29, 0.5);
+  --orb-2: rgba(24, 86, 255, 0.32);
+  --orb-3: rgba(232, 149, 88, 0.3);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-600: var(--primary-600);
+  --color-on-primary: var(--on-primary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-surface: var(--surface);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-glass: var(--radius-glass);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient gradient field the frosted panels sit on. Fixed so it never
+   scrolls away, and -1 z so content stays above it. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60vw 60vw at 12% 8%, var(--orb-1), transparent 60%),
+    radial-gradient(55vw 55vw at 88% 18%, var(--orb-2), transparent 60%),
+    radial-gradient(50vw 50vw at 72% 92%, var(--orb-3), transparent 62%);
+  filter: saturate(118%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body::before {
+    animation: orb-drift 22s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes orb-drift {
+  to {
+    transform: translate3d(0, -2.5%, 0) scale(1.06);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Glass primitives (verbose backdrop + layered shadow live here;
+ * components compose these with Tailwind utilities)
+ * ------------------------------------------------------------------ */
+.glass {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-glass);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+/* Luminous top edge that sells the frosted-glass read. */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding-top: 1px;
+  background: linear-gradient(
+    to bottom,
+    var(--glass-highlight),
+    transparent 40%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.glass-input {
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: 0.9rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.glass-input:focus-within,
+.glass-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent);
+  outline: none;
+}
+
+/* Visible keyboard focus everywhere (a11y). */
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 0.4rem;
 }
