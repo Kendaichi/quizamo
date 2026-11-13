@@ -479,6 +479,41 @@ export function getSessionReport(sessionId: number): Promise<SessionReport> {
   return delay(buildReport(store, s));
 }
 
+export type ParticipantOverviewRow = {
+  participantId: number;
+  displayName: string;
+  isKicked: boolean;
+  joinCode: string;
+  joinedAt: string;
+  kind: Kind;
+  questionnaireName: string;
+  score: number;
+  sessionId: number;
+};
+
+// Every participant across every host (get_participants_overview).
+export function listParticipantsOverview(): Promise<ParticipantOverviewRow[]> {
+  const store = read();
+  const rows = store.participants
+    .map((p): ParticipantOverviewRow => {
+      const session = store.sessions.find((s) => s.id === p.sessionId);
+      const qn = session && store.questionnaires.find((q) => q.id === session.questionnaireId);
+      return {
+        participantId: p.id,
+        displayName: p.displayName,
+        isKicked: p.isKicked,
+        joinCode: session?.joinCode ?? "—",
+        joinedAt: p.joinedAt,
+        kind: qn ? qn.kind : "standard",
+        questionnaireName: qn ? qn.name : "—",
+        score: scoreFor(p.id),
+        sessionId: p.sessionId,
+      };
+    })
+    .sort((a, b) => b.joinedAt.localeCompare(a.joinedAt));
+  return delay(rows);
+}
+
 export function listHistory(): Promise<HistoryRow[]> {
   const store = read();
   const rows = store.sessions

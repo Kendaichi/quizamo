@@ -18,3 +18,10 @@ export function useSessionReportQuery(sessionId: number) {
     queryFn: () => db.getSessionReport(sessionId),
   });
 }
+
+export function useParticipantsOverviewQuery() {
+  return useQuery({
+    queryKey: ["participants-overview"],
+    queryFn: () => db.listParticipantsOverview(),
+  });
+}

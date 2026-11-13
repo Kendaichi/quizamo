@@ -16,8 +16,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/questionnaires", label: "Questionnaires", icon: ListChecks },
   { href: "/hosts", label: "Hosts", icon: Radio },
-  // Later slice — shown but not built yet.
-  { href: "/participants", label: "Participants", icon: Users, soon: true },
+  { href: "/participants", label: "Participants", icon: Users },
 ];
 
 function NavItems({ pathname, layout }: { pathname: string; layout: "side" | "top" }) {
